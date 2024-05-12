@@ -1,4 +1,15 @@
 namespace monna {
+    export class EmojiBook {
+        private static emoji = ["📖", "📜", "📘", "📕", "📗", "📙", "🧾"];
+        private emojiId = -1;
+
+        pickBookEmoji(): string {
+            this.emojiId = (this.emojiId + 1) % EmojiBook.emoji.length;
+            return EmojiBook.emoji[this.emojiId];
+        }
+
+    }
+
     export function passage(name: string, title: string, sub: string, cb: (s: el.Span) => void | Promise<void>) {
         Passage.of(name, async s => {
             prefix(title, s);
@@ -16,16 +27,16 @@ namespace monna {
 
     export function footer(sub: string, s: el.Span) {
         s.hr();
-        link(s, "Повернутись назад", "Start", []);
+        s.passln("На початковий Вузол", "Start", []);
         
         s.hr();
         s.printCenter(sub);
-
     }
 
-    export function link(s: el.Span, name: string, passage: string, args: any[]) {
-        s.printCenter(el.link(name, () => {
-            Passage.goto(passage, args);
+    export function href(s: el.Span, name: string, link: string) {
+        s.println(el.of('a', a => {
+            a.innerText = name;
+            a.href = link;
         }));
     }
 }

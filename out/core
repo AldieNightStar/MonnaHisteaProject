@@ -2607,6 +2607,17 @@
 	})(Engine || (Engine = {}));
 	var monna;
 	(function (monna) {
+	    class EmojiBook {
+	        constructor() {
+	            this.emojiId = -1;
+	        }
+	        pickBookEmoji() {
+	            this.emojiId = (this.emojiId + 1) % EmojiBook.emoji.length;
+	            return EmojiBook.emoji[this.emojiId];
+	        }
+	    }
+	    EmojiBook.emoji = ["📖", "📜", "📘", "📕", "📗", "📙", "🧾"];
+	    monna.EmojiBook = EmojiBook;
 	    function passage(name, title, sub, cb) {
 	        Passage.of(name, async (s) => {
 	            prefix(title, s);
@@ -2624,17 +2635,18 @@
 	    monna.prefix = prefix;
 	    function footer(sub, s) {
 	        s.hr();
-	        link(s, "Повернутись назад", "Start", []);
+	        s.passln("На початковий Вузол", "Start", []);
 	        s.hr();
 	        s.printCenter(sub);
 	    }
 	    monna.footer = footer;
-	    function link(s, name, passage, args) {
-	        s.printCenter(el.link(name, () => {
-	            Passage.goto(passage, args);
+	    function href(s, name, link) {
+	        s.println(el.of('a', a => {
+	            a.innerText = name;
+	            a.href = link;
 	        }));
 	    }
-	    monna.link = link;
+	    monna.href = href;
 	})(monna || (monna = {}));
 	var monna;
 	(function (monna) {
@@ -2653,25 +2665,105 @@
 	    }
 	    monna.pickPhrase = pickPhrase;
 	})(monna || (monna = {}));
-	monna.passage("Books", "Книжкова лавочка", "Притулок книжечок", s => {
-	    const books = ["📖", "📜", "📘", "📕", "📗", "📙", "🧾"];
-	    let bookId = -1;
-	    const pickBook = () => {
-	        bookId = (bookId + 1) % books.length;
-	        return books[bookId];
+	var monna;
+	(function (monna) {
+	    class Releases {
+	        render(s) {
+	            for (let [ver, url] of Releases.releases) {
+	                monna.href(s, "🧩Monna Histea - " + ver, url);
+	            }
+	        }
+	    }
+	    Releases.releases = [
+	        ["2.2.1", "https://ouo.io/xaSmeJc"],
+	    ];
+	    monna.Releases = Releases;
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    class StoryTeller {
+	        constructor(story) {
+	            this.story = story;
+	        }
+	        render(s) {
+	            s.println(this.story);
+	        }
+	    }
+	    monna.StoryTeller = StoryTeller;
+	    class SubStory {
+	        constructor(subBook) {
+	            this.subBook = subBook;
+	        }
+	        render(s) {
+	            const e = new monna.EmojiBook();
+	            Object.keys(this.subBook).forEach(chapterName => {
+	                s.clinkln(e.pickBookEmoji() + chapterName, () => {
+	                    const story = this.subBook[chapterName];
+	                    s.println(new StoryTeller(story));
+	                });
+	            });
+	        }
+	    }
+	    monna.SubStory = SubStory;
+	    class Stories {
+	        render(s) {
+	            const e = new monna.EmojiBook();
+	            Object.keys(monna.STORIES).forEach(name => {
+	                const book = monna.STORIES[name];
+	                s.clinkln(e.pickBookEmoji() + name, () => {
+	                    s.print(new SubStory(book));
+	                });
+	            });
+	        }
+	    }
+	    monna.Stories = Stories;
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    monna.STORY_ALDIE = {
+	        "Моя маленька таємниця": "Таке от"
 	    };
-	    const m = (name) => s.linkln(pickBook() + name, () => window.alert("У прогресі"));
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    monna.STORY_TIFF = {};
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    monna.STORY_HAXI = {};
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    monna.STORY_NIMFI = {};
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    monna.STORY_BORU = {};
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    monna.STORIES = {
+	        "Алдія": monna.STORY_ALDIE,
+	        "Тіффій": monna.STORY_TIFF,
+	        "Хаксі": monna.STORY_HAXI,
+	        "Німферія": monna.STORY_NIMFI,
+	        "Бору Ведей": monna.STORY_BORU,
+	    };
+	})(monna || (monna = {}));
+	monna.passage("Assets", "Assets", "Список ассетів до движка", s => {
+	});
+	monna.passage("Books", "Книжкова лавочка", "Притулок книжечок", s => {
+	    const e = new monna.EmojiBook();
+	    const m = (name) => s.linkln(e.pickBookEmoji() + name, () => window.alert("У прогресі"));
 	    m("Щоденники Хаксі");
 	    m("Приручена Гістерія");
-	    m("Поклик Редестри");
 	    m("Nimmie del Ferio");
-	    m("Зіткнення світів");
-	    m("Остання подорож");
 	    m("Капітан РебітФіш");
 	    m("Хранитель Ангори");
 	    m("Енеопсис Марсіанський проект");
 	});
 	monna.passage("Engine", "Monna Histea Engine", "Твори свої світи", s => {
+	    s.println(new monna.Releases());
 	});
 	monna.passage("Monpedia", "Монпедія", "Енциклопедія про твоїх улюблених персонажів", s => {
 	});
@@ -2683,15 +2775,17 @@
 	Passage.of("Start", s => {
 	    const phrase = monna.pickPhrase() + " (HaxiDenti)";
 	    monna.prefix("Monna Histea", s);
-	    monna.link(s, "📘Монпедія", "Monpedia", [0]);
-	    monna.link(s, "📜Короткі історії", "Stories", [0]);
-	    monna.link(s, "⏲️Новини", "News", [0]);
-	    monna.link(s, "📖Книги", "Books", [0]);
-	    monna.link(s, "🧩Monna Histea Engine", "Engine", [0]);
+	    s.passln("📘Монпедія", "Monpedia", [0]);
+	    s.passln("📜Короткі історії", "Stories", [0]);
+	    s.passln("⏲️Новини", "News", [0]);
+	    s.passln("📖Книги", "Books", [0]);
+	    s.passln("🧩Monna Histea Engine", "Engine", [0]);
+	    s.passln("🧩Monna Histea Engine - Прилавок Ассетів", "Assets", [0]);
 	    s.hr();
 	    s.printCenter(phrase);
 	});
 	monna.passage("Stories", "Історії", "Короткі історії", s => {
+	    s.print(new monna.Stories());
 	});
 	
 	
