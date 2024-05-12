@@ -1,0 +1,30 @@
+{
+    "compilerOptions": {
+        "lib": [
+            "ES5",
+            "ES6",
+            "ES7",
+            "dom",
+            "ES2017",
+            "ES2018",
+            "ES2019",
+            "ES2020"
+        ],
+        "outFile": "./src/__ts_build.js",
+        "removeComments": true,
+        "sourceMap": false,
+        "inlineSources": false,
+        "esModuleInterop": true,
+        "target": "ES2020",
+        "strictNullChecks": true,
+        "rootDirs": [
+            "./src/",
+            "./passages/"
+        ]
+    },
+    "include": [
+        "E:\\MonnaHisteaEngine\\CORE/src/**/*.ts",
+        "./src/**/*.ts",
+        "./passages/**/*.ts"
+    ]
+}
