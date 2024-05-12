@@ -1,0 +1,2679 @@
+(function () {
+	window.isDebugMode = true;
+	function isNull(e) {
+	    return e === null || e === undefined;
+	}
+	const V = {};
+	function bind(f, src) {
+	    return f.bind(src);
+	}
+	var Engine;
+	(function (Engine) {
+	})(Engine || (Engine = {}));
+	window.addEventListener("load", function () {
+	    Engine.Variables.load();
+	    Engine.app = document.getElementById("app");
+	    if (window['isDebugMode'] === true)
+	        Engine.Debug.activatePanel();
+	    Engine.Variables.saveWithTimer();
+	    Engine.Audio.restoreMusic();
+	    Engine.Audio.savingMusicTimer();
+	    Engine.Pos.restore();
+	    Engine.Bg.restore();
+	    Engine.BgCanvas.restore();
+	    Engine.Timer.loadNovelStart();
+	    Passage._reloadOnStart();
+	});
+	var Game;
+	(function (Game) {
+	    class ProxyBuilderParameter {
+	        constructor(name, args) {
+	            this.name = name;
+	            this.args = args;
+	        }
+	    }
+	    function buildBuilder(b) {
+	        if (b.build instanceof Function)
+	            return b.build();
+	        return b;
+	    }
+	    class ProxyBuilder {
+	        constructor() {
+	            this.__list = [];
+	        }
+	        __append(name, args) {
+	            this.__list.push(new ProxyBuilderParameter(name, args));
+	        }
+	        build() {
+	            const map = {};
+	            for (let param of this.__list) {
+	                const existingArgs = map[param.name];
+	                const mappedArgs = param.args.map(buildBuilder);
+	                if (isNull(existingArgs)) {
+	                    map[param.name] = mappedArgs;
+	                }
+	                else {
+	                    existingArgs.push(...mappedArgs);
+	                }
+	            }
+	            return map;
+	        }
+	    }
+	    function applyCall(proxy, target, name) {
+	        return (...args) => {
+	            if (args.length < 1) {
+	                target.__append(name, [true]);
+	            }
+	            else {
+	                target.__append(name, args);
+	            }
+	            return proxy;
+	        };
+	    }
+	    function builder() {
+	        return () => {
+	            const proxy = new Proxy(new ProxyBuilder(), {
+	                get(target, name) {
+	                    if (target[name])
+	                        return target[name];
+	                    return applyCall(proxy, target, name);
+	                }
+	            });
+	            return proxy;
+	        };
+	    }
+	    Game.builder = builder;
+	})(Game || (Game = {}));
+	var Engine;
+	(function (Engine) {
+	    class BgCanvas {
+	        static getApi(data) {
+	            return new el.internal.CanvasApi(this.getCanvas(), this.context(), data);
+	        }
+	        static _data() {
+	            if (isNull(V.canvas_data))
+	                V.canvas_data = [];
+	            return V.canvas_data;
+	        }
+	        static _setData(arr) {
+	            V.canvas_data = arr;
+	        }
+	        static _keepSize() {
+	            if (this.canvas) {
+	                this.canvas.width = window.innerWidth;
+	                this.canvas.height = window.innerHeight;
+	            }
+	        }
+	        static _sizeUpdaterByPeriod(period) {
+	            let counter = 0;
+	            return () => {
+	                counter += 1;
+	                if (counter >= period) {
+	                    this._keepSize();
+	                    counter = 0;
+	                }
+	            };
+	        }
+	        static getCanvas() {
+	            if (isNull(this.canvas)) {
+	                const canvas = el.selectOne("#bg-canvas");
+	                if (isNull(canvas))
+	                    throw new Error("Canvas #bg-canvas should be present");
+	                this.canvas = canvas;
+	            }
+	            this._keepSize();
+	            return this.canvas;
+	        }
+	        static context() {
+	            if (isNull(this.__context)) {
+	                this.__context = this.getCanvas().getContext('2d');
+	            }
+	            return this.__context;
+	        }
+	        static _playTimer(appDataList) {
+	            const sizeUpdater = this._sizeUpdaterByPeriod(20);
+	            if (this.timer)
+	                this.timer.stop();
+	            const mappedList = appDataList
+	                .map(d => [this.apps[d.name], this.getApi(d.data)])
+	                .filter(([func, api]) => !isNull(func));
+	            this.timer = new Engine.Timer(setInterval(() => {
+	                sizeUpdater();
+	                this.context().clearRect(0, 0, 0xFFFF, 0xFFFF);
+	                for (let [func, api] of mappedList) {
+	                    func(api);
+	                }
+	            }, 35), true);
+	        }
+	        static restore() {
+	            this._playTimer(this._data());
+	        }
+	        static clear() {
+	            this._data().splice(0, 0xFFFF);
+	            if (this.timer)
+	                this.timer.stop();
+	            this.context().clearRect(0, 0, 0xFFFF, 0xFFFF);
+	        }
+	        static clearByName(name) {
+	            const cleared = this._data().filter(d => d.name !== name);
+	            this._setData(cleared);
+	            this.restore();
+	        }
+	        static use(name, data) {
+	            if (typeof data !== "object")
+	                data = {};
+	            if (this.apps[name]) {
+	                this._data().push({ name, data });
+	                this.restore();
+	                return;
+	            }
+	            throw new Error("Can't set new bg canvas application as it's absent: " + name);
+	        }
+	        static current() {
+	            return this._data().map(d => d.name);
+	        }
+	        static all() {
+	            return Object.keys(this.apps).filter(name => !name.startsWith("__"));
+	        }
+	        static of(name, func) {
+	            if (this.apps[name]) {
+	                throw new Error("BgCanvas application '" + name + "' is already exist");
+	            }
+	            this.apps[name] = func;
+	        }
+	        static ofImages() {
+	            return new Engine.internal.BgCanvasImagesBuilder();
+	        }
+	        static ofFloating(imageSrc, w, h) {
+	            return new Engine.internal.BgCanvasFloatingBuilder(imageSrc, w, h);
+	        }
+	    }
+	    BgCanvas.apps = {};
+	    Engine.BgCanvas = BgCanvas;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    function _isImagePosAlias(o) {
+	        return typeof o === "object" && typeof o.pos === "string";
+	    }
+	    function _shaking(bias, frequency, amplitude) {
+	        const ms = (bias + Engine.Timer.elapsed()) % 2000;
+	        const angularFrequency = 2 * Math.PI * frequency;
+	        return amplitude * Math.sin(angularFrequency * ms / 1000);
+	    }
+	    async function _makeSureAllLoaded(images) {
+	        for (let image of images) {
+	            await Engine.Loader.image(image.src);
+	        }
+	    }
+	    function _getSize(imageObject, image) {
+	        let w = image.w;
+	        let h = image.h;
+	        if (isNull(w))
+	            w = imageObject.naturalWidth;
+	        if (isNull(h))
+	            h = imageObject.naturalHeight;
+	        return [w, h];
+	    }
+	    function _getPos(imageObject, image, canvasW, canvasH) {
+	        let x = image.x;
+	        let y = image.y;
+	        if (_isImagePosAlias(image)) {
+	            const [w, h] = _getSize(imageObject, image);
+	            if (image.pos === "left") {
+	                x = 0;
+	                y = canvasH - h;
+	            }
+	            else if (image.pos === "right") {
+	                x = canvasW - w;
+	                y = canvasH - h;
+	            }
+	            else if (image.pos === "center") {
+	                x = (canvasW / 2) - (w / 2);
+	                y = canvasH - h;
+	            }
+	        }
+	        return [x, y];
+	    }
+	    Engine.BgCanvas.of("__images", async (api) => {
+	        const dat = api.dat;
+	        if (isNull(dat.images))
+	            return;
+	        await _makeSureAllLoaded(dat.images);
+	        const c = api.ctx;
+	        const canvas = api.canvas;
+	        let id = 0;
+	        for (let image of dat.images) {
+	            const imageObject = await Engine.Loader.image(image.src);
+	            const [w, h] = _getSize(imageObject, image);
+	            const [x, y] = _getPos(imageObject, image, canvas.width, canvas.height);
+	            const dy = _shaking(id * 500, 0.25, 2);
+	            id += 1;
+	            c.drawImage(imageObject, x, y + dy, w, h);
+	        }
+	    });
+	    let internal;
+	    (function (internal) {
+	        class BgCanvasImagesBuilder {
+	            constructor() {
+	                this.images = [];
+	            }
+	            image(src, x, y, w, h) {
+	                this.images.push({ src, x, y, w, h });
+	                return this;
+	            }
+	            left(src, w, h) {
+	                this.images.push({ src, pos: "left", w, h });
+	                return this;
+	            }
+	            right(src, w, h) {
+	                this.images.push({ src, pos: "right", w, h });
+	                return this;
+	            }
+	            center(src, w, h) {
+	                this.images.push({ src, pos: "center", w, h });
+	                return this;
+	            }
+	            use() {
+	                Engine.BgCanvas.use("__images", { images: this.images });
+	            }
+	        }
+	        internal.BgCanvasImagesBuilder = BgCanvasImagesBuilder;
+	    })(internal = Engine.internal || (Engine.internal = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    let internal;
+	    (function (internal) {
+	        class BgCanvasFloatingBuilder {
+	            constructor(imageSrc, w, h) {
+	                this.imageSrc = imageSrc;
+	                this.w = w;
+	                this.h = h;
+	                this.particles = [];
+	            }
+	            particle(x, y, xs, ys) {
+	                this.particles.push({ x, y, xs, ys });
+	                return this;
+	            }
+	            fallRandom(count, maxSpeed) {
+	                if (count < 1)
+	                    count = 1;
+	                const { width, height } = Engine.BgCanvas.getCanvas();
+	                const halfSpeed = maxSpeed / 2;
+	                for (let i = 0; i < count; i++) {
+	                    this.particles.push({
+	                        x: Util.rand(0, width),
+	                        y: Util.rand(0, height),
+	                        xs: Util.randf(-halfSpeed, halfSpeed),
+	                        ys: Util.randf(halfSpeed, maxSpeed)
+	                    });
+	                }
+	                return this;
+	            }
+	            levitateRandom(count, maxSpeed) {
+	                if (count < 1)
+	                    count = 1;
+	                const { width, height } = Engine.BgCanvas.getCanvas();
+	                const quartSpeed = maxSpeed / 4;
+	                for (let i = 0; i < count; i++) {
+	                    this.particles.push({
+	                        x: Util.rand(0, width),
+	                        y: Util.rand(0, height),
+	                        xs: Util.randf(-maxSpeed, maxSpeed),
+	                        ys: Util.randf(-quartSpeed, quartSpeed)
+	                    });
+	                }
+	                return this;
+	            }
+	            raiseRandom(count, maxSpeed) {
+	                if (count < 1)
+	                    count = 1;
+	                const { width, height } = Engine.BgCanvas.getCanvas();
+	                const quartSpeed = maxSpeed / 4;
+	                for (let i = 0; i < count; i++) {
+	                    this.particles.push({
+	                        x: Util.rand(0, width),
+	                        y: Util.rand(0, height),
+	                        xs: Util.randf(-quartSpeed, quartSpeed),
+	                        ys: Util.randf(-maxSpeed, -quartSpeed)
+	                    });
+	                }
+	                return this;
+	            }
+	            use() {
+	                Engine.BgCanvas.use("__floating", { particles: this.particles, src: this.imageSrc, w: this.w, h: this.h });
+	            }
+	        }
+	        internal.BgCanvasFloatingBuilder = BgCanvasFloatingBuilder;
+	    })(internal = Engine.internal || (Engine.internal = {}));
+	    Engine.BgCanvas.of("__floating", async (s) => {
+	        const data = s.dat;
+	        if (isNull(data.particles))
+	            return;
+	        const image = await Engine.Loader.image(data.src);
+	        const c = s.ctx;
+	        const { width, height } = s.canvas;
+	        let imageWidth = data.w;
+	        let imageHeight = data.h;
+	        if (isNull(imageWidth))
+	            imageWidth = image.naturalWidth;
+	        if (isNull(imageHeight))
+	            imageHeight = image.naturalHeight;
+	        for (let particle of data.particles) {
+	            c.drawImage(image, particle.x, particle.y, imageWidth, imageHeight);
+	            particle.x += particle.xs;
+	            particle.y += particle.ys;
+	            if (particle.x < -image.naturalWidth)
+	                particle.x = width;
+	            if (particle.x > width)
+	                particle.x = -image.naturalWidth;
+	            if (particle.y < -image.naturalHeight)
+	                particle.y = height;
+	            if (particle.y > height)
+	                particle.y = -image.naturalHeight;
+	        }
+	    });
+	})(Engine || (Engine = {}));
+	var el;
+	(function (el) {
+	    let internal;
+	    (function (internal) {
+	        class CanvasApi {
+	            constructor(canvas, ctx, dat) {
+	                this.canvas = canvas;
+	                this.ctx = ctx;
+	                this.dat = dat;
+	                this.clickHandlers = [];
+	            }
+	            waitClick() {
+	                return new Promise(ok => {
+	                    this.clickHandlers.push((x, y) => ok([x, y]));
+	                });
+	            }
+	            _registerClick(x, y) {
+	                if (this.clickHandlers.length > 0) {
+	                    this.clickHandlers.forEach(c => c(x, y));
+	                    this.clickHandlers = [];
+	                }
+	            }
+	        }
+	        internal.CanvasApi = CanvasApi;
+	    })(internal = el.internal || (el.internal = {}));
+	    function canvasOnclick(canvas, e, api) {
+	        const rect = canvas.getBoundingClientRect();
+	        const { clientX, clientY } = e;
+	        const x = clientX - rect.left;
+	        const y = clientY - rect.top;
+	        api._registerClick(x, y);
+	    }
+	    function canvas(w, h, cb) {
+	        const canvas = document.createElement("canvas");
+	        const ctx = canvas.getContext('2d');
+	        if (!ctx)
+	            throw new Error("Can't take Canvas 2d context");
+	        const api = new internal.CanvasApi(canvas, ctx, {});
+	        canvas.width = w;
+	        canvas.height = h;
+	        canvas.reload = () => {
+	            ctx.clearRect(0, 0, canvas.width, canvas.height);
+	            if (cb)
+	                cb(api);
+	        };
+	        canvas.onclick = (e) => {
+	            canvasOnclick(canvas, e, api);
+	        };
+	        canvas.reload();
+	        return canvas;
+	    }
+	    el.canvas = canvas;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    function center(elem) {
+	        return el.of('center', c => {
+	            el.print(c, elem);
+	        });
+	    }
+	    el.center = center;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    function of(tag, cb) {
+	        let elem = document.createElement(tag);
+	        if (cb)
+	            cb(elem);
+	        elem.reload = async () => {
+	            await el.clear(elem);
+	            if (cb)
+	                await cb(elem);
+	        };
+	        elem.ID = (id) => {
+	            elem.id = id;
+	            return elem;
+	        };
+	        elem.CLASS = (name) => {
+	            elem.className = name;
+	            return elem;
+	        };
+	        return elem;
+	    }
+	    el.of = of;
+	    ;
+	    function span(cb) {
+	        return el.of("span", s => {
+	            if (cb instanceof Function)
+	                cb(new el.Span(s));
+	        });
+	    }
+	    el.span = span;
+	    function button(text, onclick, cb) {
+	        return el.of("button", b => {
+	            b.innerText = text;
+	            b.onclick = onclick;
+	            if (cb)
+	                cb(b);
+	        });
+	    }
+	    el.button = button;
+	    function rebutton(reloadable, text, onclick, cb) {
+	        return el.button(text, async () => {
+	            await onclick();
+	            await el.reload(reloadable);
+	        }, cb);
+	    }
+	    el.rebutton = rebutton;
+	    function link(text, onclick, cb) {
+	        return el.of("a", l => {
+	            l.innerText = text;
+	            l.onclick = onclick;
+	            if (cb)
+	                cb(l);
+	        });
+	    }
+	    el.link = link;
+	    function relink(reloadable, text, onclick, cb) {
+	        return el.link(text, async () => {
+	            await onclick();
+	            await el.reload(reloadable);
+	        }, cb);
+	    }
+	    el.relink = relink;
+	    function img(src, w, h, cb) {
+	        return el.of("img", (i) => {
+	            if (i instanceof HTMLImageElement) {
+	                i;
+	                i.src = src;
+	                i.style.width = "" + w;
+	                i.style.height = "" + h;
+	                i.style.maxWidth = "100%";
+	                i.style.maxHeight = "100vh";
+	                i.wait = () => new Promise((ok, fail) => {
+	                    i.onload = () => {
+	                        ok(i);
+	                    };
+	                    i.onerror = (e) => {
+	                        fail(e);
+	                    };
+	                });
+	                if (cb)
+	                    cb(i);
+	            }
+	            else {
+	                throw new Error("Image element is not of correct type: " + i);
+	            }
+	        });
+	    }
+	    el.img = img;
+	    function br() { return el.of("br"); }
+	    el.br = br;
+	    function hr() { return el.of("hr"); }
+	    el.hr = hr;
+	    function typing(text, ms, onChar, onDone) {
+	        return el.span(s => {
+	            let pos = 0;
+	            let timer = Engine.Timer.interval(ms, async () => {
+	                if (pos < text.length) {
+	                    const char = text[pos];
+	                    el.print(s, char);
+	                    pos += 1;
+	                    if (onChar)
+	                        await onChar(char);
+	                }
+	                else {
+	                    timer.stop();
+	                    if (onDone)
+	                        onDone();
+	                }
+	            });
+	        });
+	    }
+	    el.typing = typing;
+	    function title(caption, cb) {
+	        return el.of("h1", h => {
+	            h.innerText = caption;
+	            if (cb)
+	                cb(h);
+	        });
+	    }
+	    el.title = title;
+	    function timerLink(seconds, text, cb) {
+	        return el.of("a", a => {
+	            const timerIcon = (seconds <= 3) ? "⛔" : "⏲️";
+	            a.innerText = text + " [" + timerIcon + " " + seconds + "]";
+	            const timer = Engine.Timer.single(1000, () => {
+	                if (!a.isConnected)
+	                    return;
+	                seconds -= 1;
+	                if (seconds > 0) {
+	                    el.reload(a);
+	                }
+	                else {
+	                    cb();
+	                    a.onclick = null;
+	                    a.innerText = text;
+	                }
+	            });
+	            a.onclick = () => {
+	                cb();
+	                a.innerText = text;
+	                timer.stop();
+	            };
+	        });
+	    }
+	    el.timerLink = timerLink;
+	    function choose(variants, callback) {
+	        return el.span(s => {
+	            const s_chooser = s;
+	            if (isNull(s_chooser.chosen)) {
+	                for (let [caption, value] of variants) {
+	                    el.println(s, el.relink(s, " " + caption + " ", () => {
+	                        s_chooser.chosen = true;
+	                        callback(value);
+	                    }));
+	                }
+	            }
+	        });
+	    }
+	    el.choose = choose;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    function isRenderable(obj) {
+	        return (typeof obj === "object" && obj.render instanceof Function);
+	    }
+	    el.isRenderable = isRenderable;
+	    function isReloadable(obj) {
+	        return (typeof obj === "object" && obj.reload instanceof Function);
+	    }
+	    el.isReloadable = isReloadable;
+	    function isAppendable(obj) {
+	        return (typeof obj === "object" && obj.appendChild instanceof Function);
+	    }
+	    el.isAppendable = isAppendable;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    function print(target, src) {
+	        if (el.isAppendable(target)) {
+	            let wrapped = el.wrap(src);
+	            target.appendChild(wrapped);
+	            return wrapped;
+	        }
+	        else {
+	            throw new Error("el.print: Target should be el.IAppendable: " + target);
+	        }
+	    }
+	    el.print = print;
+	    ;
+	    function println(target, src) {
+	        let wrapped = el.print(target, src);
+	        el.print(target, el.br());
+	        return wrapped;
+	    }
+	    el.println = println;
+	    ;
+	    function wrap(element) {
+	        if (element instanceof HTMLElement) {
+	            return element;
+	        }
+	        else if (element instanceof Promise) {
+	            return el.span(s => {
+	                s.print("⌛⌛⌛");
+	                element.then(loadedElement => {
+	                    s.clear();
+	                    s.print(loadedElement);
+	                }).catch(error => {
+	                    s.clear();
+	                    console.error(error);
+	                    if (error.message) {
+	                        s.print("[⛔ERR: " + error.message + "]");
+	                    }
+	                    else {
+	                        s.print("[⛔ERR: " + error + "]");
+	                    }
+	                });
+	            });
+	        }
+	        else if (Array.isArray(element)) {
+	            return el.span(span => {
+	                element.forEach(subElem => el.print(span, el.wrap(subElem)));
+	            });
+	        }
+	        else if (el.isRenderable(element)) {
+	            return el.span(span => {
+	                element.render(span);
+	            });
+	        }
+	        return el.span(s => {
+	            s.span.innerText = "" + element;
+	        });
+	    }
+	    el.wrap = wrap;
+	    ;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    async function reload(target) {
+	        if (el.isReloadable(target)) {
+	            await target.reload();
+	        }
+	    }
+	    el.reload = reload;
+	    async function reloadFade(target, ms = 600) {
+	        if (target instanceof HTMLElement && el.isReloadable(target)) {
+	            Util.declick(target);
+	            await Engine.Effect.fadeChange(target, ms, async () => {
+	                await el.reload(target);
+	            });
+	        }
+	    }
+	    el.reloadFade = reloadFade;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    function clear(target) {
+	        if (target instanceof HTMLElement) {
+	            target.innerHTML = "";
+	        }
+	        else {
+	            throw new Error("Can't el.clear(...) as element is not HTMLElement: " + target);
+	        }
+	    }
+	    el.clear = clear;
+	    function remove(target) {
+	        if (target instanceof HTMLElement) {
+	            const parentElem = target.parentElement;
+	            if (parentElem !== null) {
+	                parentElem.removeChild(target);
+	            }
+	        }
+	        else {
+	            throw new Error("Can't el.remove(...) as element is not HTMLElement: " + target);
+	        }
+	    }
+	    el.remove = remove;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    function select(s) {
+	        return document.querySelectorAll(s);
+	    }
+	    el.select = select;
+	    function selectOne(s) { return document.querySelector(s); }
+	    el.selectOne = selectOne;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    class SequenceAdder {
+	        constructor(seq, add, varName) {
+	            this.seq = seq;
+	            this.add = add;
+	            this.varName = varName;
+	        }
+	        text(t) {
+	            this.add((s) => s.print(t));
+	            return this;
+	        }
+	        img(src, text) {
+	            this.add((s) => {
+	                s.printCenterln(el.img(src));
+	                if (!isNull(text))
+	                    s.print(text);
+	            });
+	            return this;
+	        }
+	        title(title, text) {
+	            this.add((s) => {
+	                s.title(title, true);
+	                if (!isNull(text))
+	                    s.print(text);
+	            });
+	            return this;
+	        }
+	        action(cb) {
+	            this.add(cb);
+	            return this;
+	        }
+	        pass(text, passage, args, cb) {
+	            this.add(s => s.link(text, () => {
+	                if (cb instanceof Function) {
+	                    cb();
+	                }
+	                delete V[this.varName];
+	                Passage.goto(passage, args);
+	            }));
+	            return this;
+	        }
+	        done() {
+	            return this.seq;
+	        }
+	    }
+	    el.SequenceAdder = SequenceAdder;
+	    class Sequence {
+	        constructor(varName) {
+	            this.varName = varName;
+	            this.prevCaption = "<< Previous";
+	            this.nextCaption = "Next >>";
+	            this.allowPrev = true;
+	            this.adder = new SequenceAdder(this, cb => this.funcs.push(cb), this.varName);
+	            this.funcs = [];
+	        }
+	        setup(allowPrev, next, prev = "") {
+	            this.allowPrev = allowPrev;
+	            this.nextCaption = next;
+	            this.prevCaption = prev;
+	            return this;
+	        }
+	        render(s) {
+	            const id = Game.v(this.varName, 0).get();
+	            const isLast = id === this.funcs.length - 1;
+	            const isFirst = id === 0;
+	            const page = id + 1;
+	            const maxPage = this.funcs.length;
+	            if (id < this.funcs.length) {
+	                const func = this.funcs[id];
+	                s.println(el.span(subspan => func(subspan)));
+	                if (this.allowPrev && !isFirst) {
+	                    s.rebutton(this.prevCaption, () => V[this.varName] = id - 1);
+	                }
+	                s.print(`${page} / ${maxPage}`);
+	                if (!isLast) {
+	                    s.rebutton(this.nextCaption, () => V[this.varName] = id + 1);
+	                }
+	            }
+	        }
+	        then() {
+	            return this.adder;
+	        }
+	    }
+	    el.Sequence = Sequence;
+	    function seq(varName) {
+	        return new Sequence(varName).then();
+	    }
+	    el.seq = seq;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    class Span {
+	        constructor(span, reloadTime = 600) {
+	            this.span = span;
+	            this.reloadTime = reloadTime;
+	            if (span.tagName !== "SPAN") {
+	                throw new Error("Tag name should be: span. Not: " + span.tagName);
+	            }
+	        }
+	        appendChild(child) {
+	            this.print(child);
+	        }
+	        println(elem) {
+	            return el.println(this.span, elem);
+	        }
+	        print(elem) {
+	            return el.print(this.span, elem);
+	        }
+	        printCenter(elem) {
+	            this.print(el.center(elem));
+	            return elem;
+	        }
+	        printCenterln(elem) {
+	            this.println(el.center(elem));
+	            return elem;
+	        }
+	        link(caption, cb) {
+	            return this.print(el.link(caption, cb));
+	        }
+	        linkln(caption, cb) {
+	            return this.println(el.link(caption, cb));
+	        }
+	        button(caption, cb) {
+	            return this.print(el.button(caption, cb));
+	        }
+	        buttonln(caption, cb) {
+	            return this.println(el.button(caption, cb));
+	        }
+	        relink(caption, cb) {
+	            return this.print(el.link(caption, () => {
+	                cb();
+	                this.reload();
+	            }));
+	        }
+	        relinkln(caption, cb) {
+	            return this.println(el.link(caption, () => {
+	                cb();
+	                this.reload();
+	            }));
+	        }
+	        rebutton(caption, cb) {
+	            return this.print(el.button(caption, () => {
+	                cb();
+	                this.reload();
+	            }));
+	        }
+	        rebuttonln(caption, cb) {
+	            return this.println(el.button(caption, () => {
+	                cb();
+	                this.reload();
+	            }));
+	        }
+	        hr() {
+	            return this.print(el.hr());
+	        }
+	        br() {
+	            return this.print(el.br());
+	        }
+	        title(text, center) {
+	            const title = el.title(text);
+	            if (center === true) {
+	                this.print(el.center(title));
+	            }
+	            else {
+	                this.print(title);
+	            }
+	            return title;
+	        }
+	        async reload() {
+	            if (this.reloadTime < 1) {
+	                await el.reload(this.span);
+	            }
+	            else {
+	                await el.reloadFade(this.span, this.reloadTime);
+	            }
+	        }
+	        clear() {
+	            el.clear(this.span);
+	        }
+	        pass(caption, passage, args, cb) {
+	            return this.link(caption, () => {
+	                if (cb)
+	                    cb();
+	                Passage.goto(passage, args);
+	            });
+	        }
+	        passln(caption, passage, args, cb) {
+	            return this.linkln(caption, () => {
+	                if (cb)
+	                    cb();
+	                Passage.goto(passage, args);
+	            });
+	        }
+	        passClean(caption, passage, args, cb) {
+	            return this.pass(caption, passage, args, () => {
+	                if (cb)
+	                    cb();
+	                Engine.Variables.clean();
+	            });
+	        }
+	        passCleanln(caption, passage, args, cb) {
+	            return this.passln(caption, passage, args, () => {
+	                if (cb)
+	                    cb();
+	                Engine.Variables.clean();
+	            });
+	        }
+	        img(src, isCenter = false) {
+	            if (!isCenter) {
+	                return this.print(el.img(src));
+	            }
+	            else {
+	                return this.printCenter(el.img(src));
+	            }
+	        }
+	        ;
+	        isConnected() {
+	            return this.span.isConnected;
+	        }
+	        timer(ms, cb) {
+	            const timer = Engine.Timer.single(ms, () => {
+	                if (!this.isConnected())
+	                    return;
+	                cb();
+	            });
+	            return timer;
+	        }
+	        interval(ms, cb) {
+	            const timer = Engine.Timer.interval(ms, () => {
+	                if (!this.isConnected()) {
+	                    timer.stop();
+	                    return;
+	                }
+	                ;
+	                cb();
+	            });
+	            return timer;
+	        }
+	        wait(ms) {
+	            return new Promise(async (ok) => {
+	                await Engine.Timer.wait(ms);
+	                if (!this.span.isConnected)
+	                    return;
+	                ok();
+	            });
+	        }
+	        type(text, ms, onChar, onDone) {
+	            return this.print(el.typing(text, ms, onChar, onDone));
+	        }
+	        typeln(text, ms, onChar, onDone) {
+	            return this.println(el.typing(text, ms, onChar, onDone));
+	        }
+	        canvas(w, h, cb) {
+	            return this.print(el.canvas(w, h, cb));
+	        }
+	        canvasln(w, h, cb) {
+	            return this.println(el.canvas(w, h, cb));
+	        }
+	        relinkPassage(caption, args, cb) {
+	            return this.link(caption, () => {
+	                if (cb)
+	                    cb();
+	                Passage.reload(args);
+	            });
+	        }
+	        relinkPassageln(caption, args, cb) {
+	            return this.linkln(caption, () => {
+	                if (cb)
+	                    cb();
+	                Passage.reload(args);
+	            });
+	        }
+	        clink(caption, cb) {
+	            return this.link(caption, () => {
+	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
+	                    this.clear();
+	                    cb();
+	                });
+	            });
+	        }
+	        clinkln(caption, cb) {
+	            return this.linkln(caption, () => {
+	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
+	                    this.clear();
+	                    cb();
+	                });
+	            });
+	        }
+	        cbutton(caption, cb) {
+	            return this.button(caption, () => {
+	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
+	                    this.clear();
+	                    cb();
+	                });
+	            });
+	        }
+	        cbuttonln(caption, cb) {
+	            return this.buttonln(caption, () => {
+	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
+	                    this.clear();
+	                    cb();
+	                });
+	            });
+	        }
+	    }
+	    el.Span = Span;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    class PassageSpan extends el.Span {
+	        constructor(span, reloadTime = 600) {
+	            super(span, reloadTime);
+	        }
+	        async reload(args) {
+	            Passage.reload(args);
+	        }
+	        goto(name, args) {
+	            return Passage.goto(name, args);
+	        }
+	        args() {
+	            return Passage.args();
+	        }
+	        arg(n) {
+	            return Passage.arg(n);
+	        }
+	    }
+	    el.PassageSpan = PassageSpan;
+	})(el || (el = {}));
+	var Engine;
+	(function (Engine) {
+	    class _Audio {
+	        static data() {
+	            if (!V.audio_data) {
+	                V.audio_data = {
+	                    music: {
+	                        src: "",
+	                        playing: false,
+	                        time: 0,
+	                        volume: 1
+	                    }
+	                };
+	            }
+	            return V.audio_data;
+	        }
+	        static async closeMusic() {
+	            if (isNull(this.music)) {
+	                return;
+	            }
+	            this.stopMusic();
+	            this.music.pause();
+	            this.music.currentTime = 0;
+	        }
+	        static stopMusic() {
+	            this.music.src = "";
+	            this.music.volume = 0;
+	            this.paused = true;
+	            this.currentTime = 0;
+	            let dat = this.data();
+	            dat.music.src = "";
+	            dat.music.volume = 0;
+	            dat.music.time = 0;
+	            dat.music.playing = false;
+	        }
+	        static async playMusic(src, vol, time) {
+	            await this.closeMusic();
+	            this.music = await Engine.Loader.audio(src);
+	            this.music.loop = true;
+	            this.music.volume = vol;
+	            if (time !== undefined) {
+	                this.music.currentTime = time;
+	            }
+	            const dat = this.data();
+	            dat.music.src = src;
+	            dat.music.volume = vol;
+	            dat.music.time = this.music.currentTime;
+	            dat.music.playing = true;
+	            this.music.play().catch(async (e) => {
+	                if (e instanceof DOMException) {
+	                    if (e.message.indexOf("no supported source") !== -1) {
+	                        window.alert("Failed to load music. No supported source: " + src);
+	                        return;
+	                    }
+	                    console.log(e.message);
+	                    this.__spawnAudioScreen(() => this.playMusic(src, vol, time));
+	                }
+	            });
+	        }
+	        static restoreMusic() {
+	            const dat = this.data();
+	            if (dat.music.playing) {
+	                this.playMusic(dat.music.src, dat.music.volume, dat.music.time);
+	            }
+	        }
+	        static savingMusicTimer() {
+	            if (this.timer)
+	                clearInterval(this.timer);
+	            const dat = this.data();
+	            this.timer = setInterval(() => {
+	                if (!isNull(this.music) && !this.music.paused) {
+	                    dat.music.time = this.music.currentTime;
+	                }
+	            }, 2000);
+	            return this.timer;
+	        }
+	        static __spawnAudioScreen(cb) {
+	            const blocking = el.selectOne("#sound-block-click");
+	            if (isNull(blocking)) {
+	                const div = el.of("div", div => {
+	                    div.id = "sound-block-click";
+	                    div.style.opacity = "0";
+	                    div.style.position = "fixed";
+	                    div.style.width = "100%";
+	                    div.style.height = "100vh";
+	                    div.style.top = "0px";
+	                    div.style.left = "0px";
+	                    div.onclick = () => {
+	                        cb();
+	                        el.remove(div);
+	                    };
+	                });
+	                el.print(document.body, div);
+	            }
+	            else {
+	                console.info("Music block element is already called. Reassigning callback");
+	                blocking.onclick = async () => {
+	                    cb();
+	                    el.remove(blocking);
+	                };
+	            }
+	        }
+	        static async playSound(src, volume, onended) {
+	            const aud = await Engine.Loader.audio(src);
+	            aud.volume = volume;
+	            if (!isNull(onended))
+	                aud.onended = onended;
+	            aud.play();
+	            return aud;
+	        }
+	        static time() {
+	            if (isNull(this.music) || this.music.paused) {
+	                return null;
+	            }
+	            return this.music.currentTime;
+	        }
+	        static setTime(time) {
+	            if (isNull(this.music))
+	                return;
+	            this.music.currentTime = time;
+	        }
+	        static isPlaying() {
+	            return !isNull(this.time());
+	        }
+	        static isPaused() {
+	            return isNull(this.time());
+	        }
+	        static waitTime(timeSeconds) {
+	            if (this.isPaused())
+	                return Promise.resolve();
+	            return new Promise(ok => {
+	                const timer = Engine.Timer.interval(1000, () => {
+	                    const time = this.time();
+	                    if (isNull(time)) {
+	                        timer.stop();
+	                        return;
+	                    }
+	                    if (time >= timeSeconds) {
+	                        timer.stop();
+	                        ok();
+	                    }
+	                });
+	            });
+	        }
+	    }
+	    _Audio.music = new window.Audio();
+	    _Audio.paused = true;
+	    _Audio.currentTime = 0;
+	    _Audio.timer = 0;
+	    Engine.Audio = _Audio;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    class Bg {
+	        static _data() {
+	            if (isNull(V.engine_bg_data)) {
+	                V.engine_bg_data = {
+	                    src: null,
+	                };
+	            }
+	            return V.engine_bg_data;
+	        }
+	        static restore() {
+	            const src = this._data().src;
+	            if (isNull(src)) {
+	                this.remove();
+	            }
+	            else {
+	                this.set(src);
+	            }
+	        }
+	        static remove() {
+	            this._data().src = null;
+	            const b = document.body.style;
+	            b['background-image'] = "";
+	            b["background-repeat"] = "";
+	            b["background-size"] = "";
+	            b["background-position"] = "";
+	            b["background-attachment"] = "";
+	        }
+	        static set(src) {
+	            if (isNull(src))
+	                return;
+	            this._data().src = src;
+	            const b = document.body.style;
+	            b['background-image'] = "url(\"" + src + "\")";
+	            b["background-repeat"] = "no-repeat";
+	            b["background-size"] = "auto 100vh";
+	            b["background-position"] = "top";
+	            b["background-attachment"] = "fixed";
+	        }
+	    }
+	    Engine.Bg = Bg;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    class Binary {
+	        static encode(string) {
+	            const codeUnits = new Uint16Array(string.length);
+	            for (let i = 0; i < codeUnits.length; i++) {
+	                codeUnits[i] = string.charCodeAt(i);
+	            }
+	            return btoa(String.fromCharCode(...new Uint8Array(codeUnits.buffer)));
+	        }
+	        static decode(encoded_str) {
+	            const binary = atob(encoded_str);
+	            const bytes = new Uint8Array(binary.length);
+	            for (let i = 0; i < bytes.length; i++) {
+	                bytes[i] = binary.charCodeAt(i);
+	            }
+	            return String.fromCharCode(...new Uint16Array(bytes.buffer));
+	        }
+	    }
+	    Engine.Binary = Binary;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    function dropdown(values_getter, onchange, defValue) {
+	        const selector = el.of("select");
+	        values_getter().forEach(p => {
+	            el.print(selector, el.of("option", o => {
+	                o.value = p;
+	                o.innerHTML = p;
+	            }));
+	        });
+	        selector.onchange = (e) => {
+	            if (e.target)
+	                onchange(e.target.value);
+	        };
+	        selector.style.backgroundColor = "black";
+	        selector.style.color = "white";
+	        selector.style.fontSize = "24px";
+	        selector.style.padding = "5px";
+	        selector.style.borderRadius = "16px";
+	        if (defValue !== undefined) {
+	            selector.value = defValue;
+	        }
+	        return selector;
+	    }
+	    class Debug {
+	        static data() {
+	            if (!V.debug_data) {
+	                V.debug_data = {
+	                    hidden: true,
+	                };
+	            }
+	            return V.debug_data;
+	        }
+	        static activatePanel() {
+	            this.__renderPanelView(el.select("#debug-panel")[0]);
+	        }
+	        static __renderPanelView(panelDiv) {
+	            el.clear(panelDiv);
+	            if (this.data().hidden) {
+	                panelDiv.style.backgroundColor = "";
+	                panelDiv.style.padding = "";
+	                panelDiv.style.borderRadius = "";
+	                panelDiv.style.position = "fixed";
+	                panelDiv.style.right = "0px";
+	                panelDiv.style.top = "0px";
+	                panelDiv.style.zIndex = 99;
+	                el.print(panelDiv, el.button("🛑DEBUG", () => {
+	                    this.data().hidden = false;
+	                    this.__renderPanelView(panelDiv);
+	                }));
+	            }
+	            else {
+	                panelDiv.style.backgroundColor = "#333333";
+	                panelDiv.style.padding = "16px";
+	                panelDiv.style.borderRadius = "12px";
+	                panelDiv.style.position = "relative";
+	                panelDiv.style.right = "";
+	                panelDiv.style.top = "";
+	                panelDiv.style.zIndex = 99;
+	                el.print(panelDiv, el.button("🛑CLOSE", () => {
+	                    this.data().hidden = true;
+	                    this.__renderPanelView(panelDiv);
+	                }));
+	                el.print(panelDiv, dropdown(() => Passage.list(), passageName => Passage.goto(passageName), Passage.current()));
+	                el.print(panelDiv, el.button("🔄️RELOAD", () => Passage.reload()));
+	                el.print(panelDiv, el.button("⚠️RESET", () => {
+	                    sessionStorage.clear();
+	                    location.reload();
+	                }));
+	                el.print(panelDiv, el.hr());
+	                el.print(panelDiv, el.button("🧮Save to SESSION", () => {
+	                    const ms = performance.now();
+	                    Engine.Variables.save();
+	                    console.log("Variables saved in " + (performance.now() - ms) + " ms");
+	                }));
+	                el.print(panelDiv, el.button("💾Save to FILE", () => {
+	                    Engine.Variables.saveFile();
+	                }));
+	                el.print(panelDiv, el.button("📂Load from FILE", () => {
+	                    Engine.Variables.loadFile();
+	                }));
+	                const varListDropdown = (span) => {
+	                    el.clear(span);
+	                    el.print(span, dropdown(() => Object.keys(V).sort(), name => {
+	                        const varNameElement = el.select("#debug-varname")[0];
+	                        varNameElement.value = name;
+	                        if (!isNull(varNameElement.onchange)) {
+	                            varNameElement.onchange(null);
+	                        }
+	                    }));
+	                };
+	                el.print(panelDiv, el.span().ID("debug-varname-list"));
+	                el.print(panelDiv, el.button("🔄️", () => varListDropdown(el.select("#debug-varname-list")[0])));
+	                varListDropdown(el.select("#debug-varname-list")[0]);
+	                el.print(panelDiv, el.of("input", inp => {
+	                    const input = inp;
+	                    input.placeholder = "Variable Name";
+	                    input.style.backgroundColor = "black";
+	                    input.style.color = "white";
+	                    input.style.borderRadius = "16px";
+	                    input.style.padding = "5px";
+	                    input.style.width = "80%";
+	                    input.onchange = () => {
+	                        const name = input.value;
+	                        if (name.length < 1)
+	                            return;
+	                        const value = V[name];
+	                        if (value !== undefined && value !== undefined) {
+	                            el.select("#debug-varval")[0].value = Engine.pack(value);
+	                        }
+	                        else {
+	                            el.select("#debug-varval")[0].value = "null";
+	                        }
+	                    };
+	                }).ID("debug-varname"));
+	                el.print(panelDiv, el.button("▶️Update", () => {
+	                    const name = el.select("#debug-varname")[0].value;
+	                    const value_t = el.select("#debug-varval")[0].value;
+	                    V[name] = Engine.unpack(value_t);
+	                }));
+	                el.print(panelDiv, el.of("textarea", t => {
+	                    const area = t;
+	                    area.placeholder = "Variable Value";
+	                    area.style.backgroundColor = "black";
+	                    area.style.color = "white";
+	                    area.style.borderRadius = "16px";
+	                    area.style.padding = "5px";
+	                    area.style.width = "100%";
+	                    area.style.height = "100px";
+	                }).ID("debug-varval"));
+	                el.print(panelDiv, el.button("🔇Stop the MUSIC", () => {
+	                    Engine.Audio.stopMusic();
+	                }));
+	                el.print(panelDiv, el.button("⏲️Stop the TIMERS", () => {
+	                    Engine.Timer.clear();
+	                }));
+	            }
+	        }
+	    }
+	    Engine.Debug = Debug;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    class Effect {
+	        static fadeIn(element, ms = 600) {
+	            return new Promise((ok, fail) => {
+	                if (!(element instanceof HTMLElement)) {
+	                    return fail(new Error("Element should be instance of HTMLElement"));
+	                }
+	                element.style.transition = "" + ms + "ms";
+	                element.style.opacity = "1";
+	                Engine.Timer.single(ms, () => {
+	                    ok(undefined);
+	                });
+	            });
+	        }
+	        static fadeOut(element, ms = 600) {
+	            return new Promise((ok, fail) => {
+	                if (!(element instanceof HTMLElement)) {
+	                    return fail(new Error("Element should be instance of HTMLElement"));
+	                }
+	                element.style.transition = "" + ms + "ms";
+	                element.style.opacity = "0";
+	                Engine.Timer.single(ms, () => {
+	                    ok(undefined);
+	                });
+	            });
+	        }
+	        static async fadeChange(element, ms, cb) {
+	            await this.fadeOut(element, ms / 2);
+	            await cb(element);
+	            await this.fadeIn(element, ms / 2);
+	        }
+	    }
+	    Engine.Effect = Effect;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    const imageCache = new Map();
+	    class Loader {
+	        static async load(...srclist) {
+	            const arr = [];
+	            for (let src of srclist) {
+	                if (src.endsWith(".jpg") || src.endsWith(".jpeg")
+	                    || src.endsWith(".png") || src.endsWith(".avif")
+	                    || src.endsWith(".svg") || src.endsWith(".webp") || src.endsWith(".bmp")) {
+	                    arr.push(await this.image(src));
+	                }
+	                else if (src.endsWith("mp3") || src.endsWith("ogg")
+	                    || src.endsWith("weba") || src.endsWith("flac")
+	                    || src.endsWith("opus") || src.endsWith("aac") || src.endsWith("wav")) {
+	                    arr.push(await this.audio(src));
+	                }
+	                else {
+	                    throw new Error("This src is not supported: " + src);
+	                }
+	            }
+	            return arr;
+	        }
+	        static image(src) {
+	            return new Promise((ok, err) => {
+	                const cached = imageCache.get(src);
+	                if (!isNull(cached)) {
+	                    return ok(cached);
+	                }
+	                const img = new Image();
+	                img.src = src;
+	                img.onload = () => {
+	                    ok(img);
+	                    imageCache.set(src, img);
+	                };
+	                img.onerror = (e) => {
+	                    err(e);
+	                };
+	            });
+	        }
+	        static audio(src) {
+	            return new Promise((ok, err) => {
+	                const aud = new window.Audio();
+	                aud.src = src;
+	                aud.onloadedmetadata = () => {
+	                    ok(aud);
+	                };
+	                aud.onerror = (e) => {
+	                    err(e);
+	                };
+	            });
+	        }
+	    }
+	    Engine.Loader = Loader;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    const NAME_KEY = "_&#";
+	    function getClassByName(path) {
+	        try {
+	            return path.split('.').reduce((prev, next) => prev[next], Game);
+	        }
+	        catch (e) {
+	            return null;
+	        }
+	    }
+	    function packObj(obj) {
+	        if (isNull(obj)) {
+	            return null;
+	        }
+	        if (obj instanceof Array) {
+	            return obj.map(packObj);
+	        }
+	        else if (typeof (obj) === "object") {
+	            if (obj.constructor && obj.constructor._path) {
+	                const fullName = obj.constructor._path;
+	                const v = {};
+	                v[NAME_KEY] = fullName;
+	                for (let k of Object.keys(obj)) {
+	                    v[k] = packObj(obj[k]);
+	                }
+	                return v;
+	            }
+	            else {
+	                const v = {};
+	                for (let k of Object.keys(obj)) {
+	                    v[k] = packObj(obj[k]);
+	                }
+	                return v;
+	            }
+	        }
+	        return obj;
+	    }
+	    function unpackObj(obj) {
+	        if (isNull(obj)) {
+	            return null;
+	        }
+	        if (obj instanceof Array) {
+	            return obj.map(unpackObj);
+	        }
+	        else if (typeof (obj) === "object") {
+	            if (obj[NAME_KEY]) {
+	                const fullName = obj[NAME_KEY];
+	                const CLAZZ = getClassByName(fullName);
+	                if (!CLAZZ)
+	                    throw new Error("Class: " + fullName + " : Is not found");
+	                const v = new CLAZZ();
+	                Object.keys(v)
+	                    .filter(k => k !== NAME_KEY)
+	                    .forEach(k => v[k] = unpackObj(obj[k]));
+	                return v;
+	            }
+	            else {
+	                const v = {};
+	                for (let k of Object.keys(obj)) {
+	                    v[k] = unpackObj(obj[k]);
+	                }
+	                return v;
+	            }
+	        }
+	        return obj;
+	    }
+	    function pack(obj) {
+	        return JSON.stringify(packObj(obj));
+	    }
+	    Engine.pack = pack;
+	    function unpack(str) {
+	        return unpackObj(JSON.parse(str));
+	    }
+	    Engine.unpack = unpack;
+	})(Engine || (Engine = {}));
+	var Game;
+	(function (Game) {
+	    function dto(obj, path) {
+	        for (let k of Object.keys(obj)) {
+	            const subObject = obj[k];
+	            const typ = typeof (subObject);
+	            if (typ === "object") {
+	                Game.dto(subObject, path + "." + k);
+	            }
+	            else if (typ === "function") {
+	                if (subObject.constructor && isNull(subObject._path)) {
+	                    subObject._path = path + "." + subObject.name;
+	                }
+	            }
+	        }
+	        if (path.indexOf(".") === -1) {
+	            if (path.length < 1) {
+	                throw new Error("Game.dto: Name should not be empty");
+	            }
+	            if (path[0] !== path[0].toUpperCase()) {
+	                throw new Error("Game.dto: Name should start with upper case letter");
+	            }
+	            if (Game[path]) {
+	                throw new Error("Game.dto: Can't define new " + path + " namespace as it already exist");
+	            }
+	            Game[path] = obj;
+	        }
+	    }
+	    Game.dto = dto;
+	})(Game || (Game = {}));
+	var Engine;
+	(function (Engine) {
+	    class Pos {
+	        static _data() {
+	            if (!V.engine_pos) {
+	                V.engine_pos = {
+	                    current: "top"
+	                };
+	            }
+	            return V.engine_pos;
+	        }
+	        static _element() {
+	            return el.selectOne("#app-pos");
+	        }
+	        static _apply_default() {
+	            const div = this._element();
+	            div.style['display'] = "block";
+	            div.style['justify-content'] = '';
+	            div.style['align-items'] = '';
+	            div.style['position'] = '';
+	            div.style['bottom'] = '';
+	            div.style['width'] = '';
+	            div.style['height'] = '';
+	            div.style['max-height'] = '100vh';
+	            div.style['overflow-wrap'] = 'anywhere';
+	            Engine.app.style['max-height'] = '';
+	            Engine.app.style['overflow-y'] = '';
+	        }
+	        static restore() {
+	            const pos = this._data().current;
+	            switch (pos) {
+	                case "center":
+	                    this.center();
+	                    break;
+	                case "top":
+	                    this.top();
+	                    break;
+	                case "bottom":
+	                    this.bottom();
+	                    break;
+	            }
+	        }
+	        static top() {
+	            this._apply_default();
+	            this._data().current = "top";
+	        }
+	        static center() {
+	            this._apply_default();
+	            this._data().current = "center";
+	            const div = this._element();
+	            div.style['display'] = "inline-flex";
+	            div.style['justify-content'] = "center";
+	            div.style['align-items'] = "center";
+	            div.style['position'] = 'relative';
+	            div.style['width'] = '100%';
+	            div.style['height'] = '90vh';
+	            div.style['max-height'] = '100vh';
+	            div.style['overflow-wrap'] = 'anywhere';
+	        }
+	        static bottom() {
+	            this._apply_default();
+	            this._data().current = "bottom";
+	            const div = this._element();
+	            div.style['display'] = "block";
+	            div.style['align-items'] = 'center';
+	            div.style['position'] = 'absolute';
+	            div.style['bottom'] = '64px';
+	            div.style['width'] = '90%';
+	            div.style['max-height'] = '50vh';
+	            div.style['overflow-wrap'] = 'anywhere';
+	            Engine.app.style['max-height'] = '50vh';
+	            Engine.app.style['overflow-y'] = 'auto';
+	        }
+	    }
+	    Engine.Pos = Pos;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    class Timer {
+	        constructor(id, isInterval) {
+	            this.id = id;
+	            this.isInterval = isInterval;
+	            this.stopped = false;
+	        }
+	        stop() {
+	            if (this.stopped)
+	                return;
+	            if (this.isInterval) {
+	                clearInterval(this.id);
+	            }
+	            else {
+	                clearTimeout(this.id);
+	            }
+	        }
+	        static clear() {
+	            for (let timer of this._timers) {
+	                timer.stop();
+	            }
+	            this._timers = [];
+	            if (this._counter >= 0xFFFF)
+	                this._counter = 0;
+	            this._counter += 1;
+	        }
+	        static interval(ms, cb) {
+	            const counter = this._counter;
+	            const timer = new Timer(setInterval(() => {
+	                if (counter !== this._counter) {
+	                    timer.stop();
+	                    return;
+	                }
+	                cb();
+	            }, ms), true);
+	            this._timers.push(timer);
+	            return timer;
+	        }
+	        static single(ms, cb) {
+	            const counter = this._counter;
+	            const timer = new Timer(setTimeout(() => {
+	                if (counter !== this._counter) {
+	                    timer.stop();
+	                    return;
+	                }
+	                cb();
+	            }, ms), false);
+	            this._timers.push(timer);
+	            return timer;
+	        }
+	        static wait(ms) {
+	            return new Promise(ok => {
+	                this.single(ms, ok);
+	            });
+	        }
+	        static loadNovelStart() {
+	            if (isNull(V.novel_start_ms)) {
+	                V.novel_start_ms = new Date().getTime();
+	            }
+	        }
+	        static elapsed() {
+	            return new Date().getTime() - V.novel_start_ms;
+	        }
+	        static elapsedSec() {
+	            const time = this.elapsed();
+	            return Math.floor(time / 1000);
+	        }
+	        static elapsedMinSec() {
+	            const timeSec = this.elapsedSec();
+	            return [
+	                Math.floor(timeSec / 60),
+	                timeSec,
+	            ];
+	        }
+	    }
+	    Timer._timers = [];
+	    Timer._counter = 0;
+	    Engine.Timer = Timer;
+	})(Engine || (Engine = {}));
+	var Game;
+	(function (Game) {
+	    function v(name, def) {
+	        const v = new Engine.VariableInstance(name);
+	        if (!isNull(def))
+	            v.init(def);
+	        return v;
+	    }
+	    Game.v = v;
+	    ;
+	})(Game || (Game = {}));
+	var RPC;
+	(function (RPC) {
+	    async function remoteWs(wsAddress, jwt) {
+	        return new RPC.RemoteWrapper(await RPC.RemoteWebSocket.of(wsAddress, jwt));
+	    }
+	    RPC.remoteWs = remoteWs;
+	    async function remoteHttp(address, jwt) {
+	        return new RPC.RemoteWrapper(new RPC.RemoteHttp(address, jwt));
+	    }
+	    RPC.remoteHttp = remoteHttp;
+	})(RPC || (RPC = {}));
+	var RPC;
+	(function (RPC) {
+	    class RemoteHttp {
+	        constructor(address, jwt) {
+	            this.address = address;
+	            this.jwt = jwt;
+	        }
+	        async __call(name, args, noreturn) {
+	            const request = {
+	                body: JSON.stringify(RPC._composeMessage(name, args)),
+	                method: "POST",
+	            };
+	            if (!isNull(this.jwt)) {
+	                request.headers = {
+	                    "Authorization": "Bearer " + this.jwt
+	                };
+	            }
+	            if (!noreturn) {
+	                const response = await fetch(this.address, request);
+	                if (response.status !== 200) {
+	                    throw new Error("RPC HTTP status is not ok: " + response.status);
+	                }
+	                const message = await response.json();
+	                if (RPC.isRemoteResponseMessage(message)) {
+	                    if (message.error) {
+	                        throw new Error("RPC: " + message.error);
+	                    }
+	                    else {
+	                        return message.result;
+	                    }
+	                }
+	                else {
+	                    throw new Error("RPC HTTP returned wrong type: " + message);
+	                }
+	            }
+	            else {
+	                fetch(this.address, request);
+	                return null;
+	            }
+	        }
+	        async call(name, ...args) {
+	            return await this.__call(name, args, false);
+	        }
+	        async notify(name, ...args) {
+	            this.__call(name, args, true);
+	        }
+	        async close() {
+	        }
+	        async auth(jwt) {
+	            return new RemoteHttp(this.address, jwt);
+	        }
+	        isOk() {
+	            return true;
+	        }
+	    }
+	    RPC.RemoteHttp = RemoteHttp;
+	})(RPC || (RPC = {}));
+	var RPC;
+	(function (RPC) {
+	    class RemoteWrapper {
+	        constructor(remote, jwt = "") {
+	            this.remote = remote;
+	            this.jwt = jwt;
+	            if (!RPC.isRemote(remote))
+	                throw new Error("IRemote is of wrong type");
+	            this.jwt = jwt;
+	            this.remote = remote;
+	        }
+	        async auth(jwt) {
+	            this.jwt = jwt;
+	            await this.restart();
+	        }
+	        isConnected() {
+	            return this.remote.isOk();
+	        }
+	        async disconnect() {
+	            await this.remote.close();
+	        }
+	        async restart() {
+	            await this.disconnect();
+	            const remote = await this.remote.auth(this.jwt);
+	            if (!RPC.isRemote(remote)) {
+	                throw new Error("Auth operation failed due to Remote is of wrong type");
+	            }
+	            this.remote = remote;
+	        }
+	        async call(name, ...args) {
+	            if (!this.isConnected())
+	                await this.restart();
+	            return await this.remote.call(name, ...args);
+	        }
+	        async notify(name, ...args) {
+	            if (!this.isConnected())
+	                await this.restart();
+	            await this.remote.notify(name, args);
+	        }
+	        client(prefix = "") {
+	            const remote = this;
+	            return new Proxy({}, {
+	                get(target, name) {
+	                    const funcName = prefix + name;
+	                    return (...args) => remote.call(funcName, ...args);
+	                }
+	            });
+	        }
+	        clientNotify(prefix = "") {
+	            const remote = this;
+	            return new Proxy({}, {
+	                get(target, name) {
+	                    const funcName = prefix + name;
+	                    return (...args) => remote.notify(funcName, ...args);
+	                }
+	            });
+	        }
+	    }
+	    RPC.RemoteWrapper = RemoteWrapper;
+	})(RPC || (RPC = {}));
+	var RPC;
+	(function (RPC) {
+	    class RemoteWebSocket {
+	        constructor(address, ws) {
+	            this.address = address;
+	            this.waitables = {};
+	            this.socket = ws;
+	            this.socket.onmessage = e => {
+	                const json = JSON.parse(e.data);
+	                this.__on_receive(json);
+	            };
+	        }
+	        isOk() {
+	            return !isNull(this.socket) && this.socket.readyState === 1;
+	        }
+	        async auth(jwt) {
+	            return RemoteWebSocket.of(this.address, jwt);
+	        }
+	        static async of(address, jwt) {
+	            const url = new URL(address);
+	            if (jwt)
+	                url.searchParams.set("jwt", jwt);
+	            const socket = await RemoteWebSocket.listen(new WebSocket(url));
+	            return new RemoteWebSocket(url.href, socket);
+	        }
+	        __on_receive(message) {
+	            if (!RPC.isRemoteResponseMessage(message)) {
+	                throw new Error("RPC: Failed to receive the message. Wrong type: " + message);
+	            }
+	            const id = message.id;
+	            if (isNull(id))
+	                return;
+	            const w = this.waitables[id];
+	            if (w) {
+	                w(message);
+	                delete this.waitables[id];
+	            }
+	        }
+	        async __call(name, args, noreturn = false) {
+	            const message = RPC._composeMessage(name, args, noreturn);
+	            const id = message.id;
+	            this.socket.send(JSON.stringify(message));
+	            if (!noreturn) {
+	                return new Promise((ok, err) => {
+	                    this.waitables[id] = (msg) => RPC._handleMessage(msg, ok, err);
+	                });
+	            }
+	            else {
+	                return null;
+	            }
+	        }
+	        async call(name, ...args) {
+	            return await this.__call(name, args, false);
+	        }
+	        async notify(name, ...args) {
+	            await this.__call(name, args, true);
+	        }
+	        async close() {
+	            if (this.isOk())
+	                this.socket.close();
+	            Object.keys(this.waitables).forEach(id => {
+	                const w = this.waitables[id];
+	                w({ id, error: "Connection is dropped!", type: "MonnaRPC" });
+	            });
+	            this.waitables = {};
+	        }
+	        static listen(socket) {
+	            return new Promise((resolve, reject) => {
+	                socket.onopen = () => resolve(socket);
+	                socket.onerror = (err) => reject(err);
+	            });
+	        }
+	    }
+	    RPC.RemoteWebSocket = RemoteWebSocket;
+	})(RPC || (RPC = {}));
+	var RPC;
+	(function (RPC) {
+	    function isRemoteResponseMessage(o) {
+	        return (typeof o === "object" && o.type === "MonnaRPC");
+	    }
+	    RPC.isRemoteResponseMessage = isRemoteResponseMessage;
+	    function isRemote(o) {
+	        return (typeof o === "object"
+	            && o.call instanceof Function
+	            && o.notify instanceof Function
+	            && o.close instanceof Function
+	            && o.auth instanceof Function
+	            && o.isOk instanceof Function);
+	    }
+	    RPC.isRemote = isRemote;
+	    function randomId() {
+	        return Math.floor(Math.random() * 0xFFFF) +
+	            "_" + Date.now() + "_" +
+	            Math.floor(Math.random() * 0xFFFF);
+	    }
+	    RPC.randomId = randomId;
+	    function _composeMessage(name, args, noreturn) {
+	        const message = {
+	            name,
+	            id: randomId(),
+	            params: args,
+	            type: "MonnaRPC"
+	        };
+	        if (noreturn === true) {
+	            message.noreturn = true;
+	        }
+	        return message;
+	    }
+	    RPC._composeMessage = _composeMessage;
+	    function _handleMessage(message, ok, err) {
+	        if (!isRemoteResponseMessage(message)) {
+	            throw new Error("RPC: Failed to receive the message. Wrong type: " + message);
+	        }
+	        if (message.error) {
+	            err(new Error("Monna RPC: " + message.error));
+	        }
+	        else {
+	            ok(message.result);
+	        }
+	    }
+	    RPC._handleMessage = _handleMessage;
+	})(RPC || (RPC = {}));
+	var Passage;
+	(function (Passage) {
+	    const passages = {};
+	    let _prefix = "";
+	    function prefix(prefix) {
+	        if (isNull(prefix)) {
+	            _prefix = "";
+	        }
+	        _prefix = prefix;
+	    }
+	    Passage.prefix = prefix;
+	    function _data() {
+	        if (!V.passage_data) {
+	            V.passage_data = {
+	                current: "Start",
+	                args: [],
+	            };
+	        }
+	        return V.passage_data;
+	    }
+	    function parentPrefix(name) {
+	        const id = name.lastIndexOf("/");
+	        if (id === -1) {
+	            return "";
+	        }
+	        return name.slice(0, id + 1);
+	    }
+	    function current() {
+	        return _data().current;
+	    }
+	    Passage.current = current;
+	    function list() {
+	        return Object.keys(passages);
+	    }
+	    Passage.list = list;
+	    function goto(name, args) {
+	        const data = _data();
+	        if (name.startsWith("./")) {
+	            name = parentPrefix(data.current) + name.slice(2);
+	        }
+	        const passageFunc = passages[name];
+	        if (passageFunc) {
+	            Util.declick(Engine.app);
+	            Engine.Effect.fadeChange(Engine.app, 600, async () => {
+	                el.clear(Engine.app);
+	                Engine.Timer.clear();
+	                data.current = name;
+	                if (isNull(args) || !Array.isArray(args)) {
+	                    data.args = [];
+	                }
+	                else {
+	                    data.args = args;
+	                }
+	                el.print(Engine.app, el.of("span", rawSpan => passageFunc(new el.PassageSpan(rawSpan))));
+	                Engine.Variables.save();
+	            });
+	            return true;
+	        }
+	        else {
+	            const message = "No passage: " + name;
+	            window.alert(message);
+	            console.error(message);
+	            return false;
+	        }
+	    }
+	    Passage.goto = goto;
+	    function reload(passageArgs) {
+	        if (isNull(passageArgs)) {
+	            passageArgs = Passage.args();
+	        }
+	        return goto(current(), passageArgs);
+	    }
+	    Passage.reload = reload;
+	    function _reloadOnStart() {
+	        goto(current(), args());
+	    }
+	    Passage._reloadOnStart = _reloadOnStart;
+	    function args() {
+	        return _data().args;
+	    }
+	    Passage.args = args;
+	    function arg(n) {
+	        const arguments = args();
+	        if (n < 0 || n >= arguments.length)
+	            return null;
+	        const value = arguments[n];
+	        if (isNull(value))
+	            return null;
+	        return value;
+	    }
+	    Passage.arg = arg;
+	    function of(name, f) {
+	        name = _prefix + name;
+	        if (passages[name]) {
+	            const message = "Passage '" + name + "' is already exists";
+	            window.alert(message);
+	            throw new Error(message);
+	        }
+	        passages[name] = f;
+	    }
+	    Passage.of = of;
+	})(Passage || (Passage = {}));
+	var Passage;
+	(function (Passage) {
+	    let internal;
+	    (function (internal) {
+	        class ChoicePassageApi {
+	            constructor(_passageName, args) {
+	                this._passageName = _passageName;
+	                this.args = args;
+	                this._variants = [];
+	            }
+	            caption(n) {
+	                this._caption = n;
+	                return this;
+	            }
+	            variant(caption, passage, passageArgs, cb) {
+	                this._variants.push([caption, passage, passageArgs, cb]);
+	                return this;
+	            }
+	            reload(caption, passageArgs, cb) {
+	                this._variants.push([caption, this._passageName, passageArgs, cb]);
+	                return this;
+	            }
+	            image(src) {
+	                this._image = src;
+	                return this;
+	            }
+	            timer(sec, passage, passageArgs, action) {
+	                this._timer = [sec, passage, passageArgs, action];
+	                return this;
+	            }
+	            className(name) {
+	                this._className = name;
+	                return this;
+	            }
+	            extractData() {
+	                return {
+	                    caption: this._caption,
+	                    variants: this._variants,
+	                    image: this._image,
+	                    timer: this._timer,
+	                    className: this._className,
+	                };
+	            }
+	        }
+	        internal.ChoicePassageApi = ChoicePassageApi;
+	    })(internal = Passage.internal || (Passage.internal = {}));
+	    function ofChoice(name, cb) {
+	        Passage.of(name, s => {
+	            const c = new internal.ChoicePassageApi(name, () => s.args());
+	            cb(c);
+	            const { caption, variants, image, timer, className } = c.extractData();
+	            if (image)
+	                s.img(image, true);
+	            const timerElement = el.of("b");
+	            s.println([caption, timerElement]);
+	            s.hr();
+	            for (let [caption, passage, args, action] of variants) {
+	                s.passln(caption, passage, args, action).CLASS(className);
+	            }
+	            if (timer) {
+	                const [sec, passage, passageArgs, action] = timer;
+	                let intervalCount = sec;
+	                function updateElement() {
+	                    timerElement.innerHTML = "⏲️" + intervalCount;
+	                }
+	                s.interval(1000, () => {
+	                    intervalCount -= 1;
+	                    if (intervalCount < 1) {
+	                        if (action)
+	                            action();
+	                        Passage.goto(passage, passageArgs);
+	                    }
+	                    updateElement();
+	                });
+	                updateElement();
+	            }
+	        });
+	    }
+	    Passage.ofChoice = ofChoice;
+	})(Passage || (Passage = {}));
+	var Passage;
+	(function (Passage) {
+	    let internal;
+	    (function (internal) {
+	        function _isMusicTime(o) {
+	            return Array.isArray(o) && o.length === 2 && o[0] === "mus";
+	        }
+	        function _waitWithTime(sec, action) {
+	            if (_isMusicTime(sec)) {
+	                const timeSec = sec[1];
+	                Engine.Audio.waitTime(timeSec).then(() => action());
+	            }
+	            else {
+	                Engine.Timer.single(sec * 1000, action);
+	            }
+	        }
+	        function _printCenter(s, element, center) {
+	            if (center) {
+	                s.printCenter(element);
+	            }
+	            else {
+	                s.print(element);
+	            }
+	        }
+	        class LinearPassageBuilderApi {
+	            constructor(args) {
+	                this.args = args;
+	                this.actions = [];
+	            }
+	            act(f) {
+	                this.actions.push(f);
+	                return this;
+	            }
+	            waitText(sec, text, center) {
+	                this.actions.push((s, next) => {
+	                    _printCenter(s, text, center || false);
+	                    _waitWithTime(sec, next);
+	                });
+	                return this;
+	            }
+	            waitImageText(sec, src, text, center) {
+	                this.actions.push((s, next) => {
+	                    s.img(src, center);
+	                    s.br();
+	                    _printCenter(s, text, center || false);
+	                    _waitWithTime(sec, next);
+	                });
+	                return this;
+	            }
+	            waitTitle(sec, text) {
+	                this.actions.push((s, next) => {
+	                    s.printCenter(el.title(text));
+	                    _waitWithTime(sec, next);
+	                });
+	                return this;
+	            }
+	            pass(passage, args) {
+	                this.actions.push((s, next) => {
+	                    Passage.goto(passage, args);
+	                });
+	                return this;
+	            }
+	            waitTyping(sec, text) {
+	                this.actions.push((s, next) => {
+	                    s.type(text, 50, undefined, () => {
+	                        _waitWithTime(sec, next);
+	                    });
+	                });
+	                return this;
+	            }
+	            mus(min, sec) {
+	                const time = (min * 60) + sec;
+	                return ['mus', time];
+	            }
+	            _getActions() {
+	                return this.actions;
+	            }
+	        }
+	        internal.LinearPassageBuilderApi = LinearPassageBuilderApi;
+	    })(internal = Passage.internal || (Passage.internal = {}));
+	    function ofLinear(name, cb) {
+	        Passage.of(name, s => {
+	            let [pos] = s.args();
+	            if (isNull(pos))
+	                pos = 0;
+	            if (pos < 0)
+	                pos = 0;
+	            const api = new internal.LinearPassageBuilderApi(s.args());
+	            cb(api);
+	            const actions = api._getActions();
+	            if (pos >= actions.length)
+	                pos = actions.length - 1;
+	            const action = actions[pos];
+	            action(s, () => {
+	                Passage.reload([pos + 1]);
+	            });
+	        });
+	    }
+	    Passage.ofLinear = ofLinear;
+	})(Passage || (Passage = {}));
+	var Passage;
+	(function (Passage) {
+	    function sequencePassageLogic(name, cb, isBack) {
+	        Passage.of(name, s => {
+	            const adder = el.seq("_seq:" + name);
+	            cb(adder);
+	            const seq = adder.done();
+	            seq.setup(isBack, ">>>", "<<<");
+	            s.print(seq);
+	        });
+	    }
+	    function ofSequence(name, cb) {
+	        sequencePassageLogic(name, cb, true);
+	    }
+	    Passage.ofSequence = ofSequence;
+	    function ofSequenceNoBack(name, cb) {
+	        sequencePassageLogic(name, cb, false);
+	    }
+	    Passage.ofSequenceNoBack = ofSequenceNoBack;
+	})(Passage || (Passage = {}));
+	var Util;
+	(function (Util) {
+	    function lineInfo(prev = false) {
+	        const e = new Error();
+	        if (isNull(e.stack)) {
+	            throw new Error("Can't determine code hash. No stack information");
+	        }
+	        const stack = e.stack.replace("\t", "").split("\n");
+	        let stackStr = "";
+	        if (prev) {
+	            stackStr = stack[1];
+	        }
+	        else {
+	            stackStr = stack[2];
+	        }
+	        let count = 0;
+	        let id = -1;
+	        for (let i = stackStr.length - 1; i > 0; i--) {
+	            const char = stackStr.charAt(i);
+	            if (char === ":") {
+	                count += 1;
+	                if (count === 2) {
+	                    id = i + 1;
+	                    break;
+	                }
+	            }
+	        }
+	        if (id === -1) {
+	            throw new Error("Can't find stack information about line and number");
+	        }
+	        if (stackStr.endsWith(")")) {
+	            stackStr = stackStr.substring(0, stackStr.length - 1);
+	        }
+	        return stackStr.substring(id);
+	    }
+	    Util.lineInfo = lineInfo;
+	})(Util || (Util = {}));
+	var Util;
+	(function (Util) {
+	    function declick(span) {
+	        if (!(span instanceof HTMLElement))
+	            return;
+	        span.onclick = null;
+	        for (let child of Array.from(span.children)) {
+	            Util.declick(child);
+	        }
+	    }
+	    Util.declick = declick;
+	})(Util || (Util = {}));
+	var Util;
+	(function (Util) {
+	    class Lazy {
+	        constructor(init) {
+	            this.init = init;
+	        }
+	        get() {
+	            if (isNull(this.data))
+	                this.data = this.init();
+	            return this.data;
+	        }
+	    }
+	    Util.Lazy = Lazy;
+	    class AsyncLazy {
+	        constructor(init) {
+	            this.init = init;
+	        }
+	        async get() {
+	            if (isNull(this.data))
+	                this.data = await this.init();
+	            return this.data;
+	        }
+	    }
+	    Util.AsyncLazy = AsyncLazy;
+	    function lazy(t) {
+	        return new Lazy(t);
+	    }
+	    Util.lazy = lazy;
+	    lazy.async = (t) => {
+	        return new AsyncLazy(t);
+	    };
+	})(Util || (Util = {}));
+	var Util;
+	(function (Util) {
+	    function rand(min, max) {
+	        return Math.floor(Util.randf(min, max + 1));
+	    }
+	    Util.rand = rand;
+	    function randf(min, max) {
+	        if (max === undefined) {
+	            max = min;
+	            min = 0;
+	        }
+	        return (Math.random() * (max - min)) + min;
+	    }
+	    Util.randf = randf;
+	    function chance(n) {
+	        return Math.random() <= n;
+	    }
+	    Util.chance = chance;
+	    function randChoose(list) {
+	        if (list.length < 1) {
+	            return null;
+	        }
+	        else if (list.length === 1) {
+	            return list[0];
+	        }
+	        const id = Util.rand(0, list.length - 1);
+	        return list[id];
+	    }
+	    Util.randChoose = randChoose;
+	})(Util || (Util = {}));
+	var Util;
+	(function (Util) {
+	    class Pageable {
+	        constructor(elements, renderer, page_number = 1, pageSize = 5) {
+	            this.elements = elements;
+	            this.renderer = renderer;
+	            this.page_number = page_number;
+	            this.pageSize = pageSize;
+	        }
+	        page(n) {
+	            const page = n - 1;
+	            const start = this.pageSize * page;
+	            const end = start + this.pageSize;
+	            return this.elements.slice(start, end);
+	        }
+	        maxpage() {
+	            return Math.ceil(this.elements.length / this.pageSize);
+	        }
+	        render(s) {
+	            __drawPanel(s, this.page_number, this.maxpage(), n => this.page_number = n);
+	            for (let elem of this.page(this.page_number)) {
+	                s.print(this.renderer(elem));
+	                s.print(el.hr());
+	            }
+	        }
+	    }
+	    Util.Pageable = Pageable;
+	    function __drawPanel(s, page, max, changePage) {
+	        const changer = (cap, n) => s.rebutton(cap, () => changePage(n));
+	        if (page > 1) {
+	            changer("<<<", 1);
+	            changer("<", page - 1);
+	        }
+	        el.print(s, `[ ${page} / ${max} ]`);
+	        if (page < max) {
+	            changer(">", page + 1);
+	            changer(">>>", max);
+	        }
+	        el.print(s, el.hr());
+	    }
+	})(Util || (Util = {}));
+	var Engine;
+	(function (Engine) {
+	    class VariableInstance {
+	        constructor(varName) {
+	            this.varName = varName;
+	        }
+	        set(value) {
+	            V[this.varName] = value;
+	            return true;
+	        }
+	        get() {
+	            return V[this.varName];
+	        }
+	        isNull() {
+	            return isNull(V[this.varName]);
+	        }
+	        init(def) {
+	            const value = V[this.varName];
+	            if (isNull(value)) {
+	                if (def instanceof Function)
+	                    def = def();
+	                V[this.varName] = def;
+	                return this;
+	            }
+	            else {
+	                return this;
+	            }
+	        }
+	    }
+	    Engine.VariableInstance = VariableInstance;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    function loadFileDecode(enc_str) {
+	        if (!Engine.Binary) {
+	            return enc_str;
+	        }
+	        return Engine.Binary.decode(enc_str);
+	    }
+	    function saveFileEncode(str) {
+	        if (!Engine.Binary) {
+	            return str;
+	        }
+	        return Engine.Binary.encode(str);
+	    }
+	    class Variables {
+	        static save() {
+	            let lastVarName = "";
+	            try {
+	                const keys = Object.keys(V);
+	                sessionStorage.clear();
+	                for (let key of keys) {
+	                    const value = V[key];
+	                    lastVarName = key;
+	                    sessionStorage.setItem(key, Engine.pack(value));
+	                }
+	            }
+	            catch (e) {
+	                console.error("Unable to save variables to Session Storage [" + lastVarName + "]", e);
+	            }
+	        }
+	        static load() {
+	            try {
+	                const keys = Object.keys(sessionStorage);
+	                this.reset();
+	                for (let key of keys) {
+	                    V[key] = Engine.unpack(sessionStorage.getItem(key));
+	                }
+	            }
+	            catch (e) {
+	                console.error("Unable to load variables from Session Storage", e);
+	            }
+	        }
+	        static clean() {
+	            Object.keys(V).forEach(k => {
+	                if (k.startsWith("_")) {
+	                    delete V[k];
+	                }
+	            });
+	        }
+	        static reset() {
+	            Object.keys(V).forEach(k => {
+	                delete V[k];
+	            });
+	        }
+	        static saveFile() {
+	            const json_string = Engine.pack(V);
+	            const encodedFileContent = saveFileEncode(json_string);
+	            var blob = new Blob([encodedFileContent], { type: "text/sav" });
+	            var url = URL.createObjectURL(blob);
+	            var link = document.createElement("a");
+	            link.href = url;
+	            link.download = Passage.current() + ".sav";
+	            document.body.appendChild(link);
+	            link.click();
+	            document.body.removeChild(link);
+	            URL.revokeObjectURL(url);
+	        }
+	        static loadFile() {
+	            var input = document.createElement("input");
+	            input.type = "file";
+	            input.onchange = function (event) {
+	                const file = event.target.files[0];
+	                var reader = new FileReader();
+	                reader.onload = function (event) {
+	                    const fileDecodedContent = loadFileDecode(event.target.result);
+	                    const js = Engine.unpack(fileDecodedContent);
+	                    Engine.Variables.reset();
+	                    Object.keys(js).forEach(k => {
+	                        const value = js[k];
+	                        V[k] = value;
+	                    });
+	                    Engine.Variables.save();
+	                    location.reload();
+	                };
+	                reader.onerror = function () {
+	                    throw new Error("Error reading file");
+	                };
+	                reader.readAsText(file);
+	            };
+	            input.click();
+	        }
+	        static saveWithTimer() {
+	            if (this._timer)
+	                this._timer.stop();
+	            this._timer = new Engine.Timer(setInterval(() => this.save(), 5000), true);
+	        }
+	    }
+	    Engine.Variables = Variables;
+	})(Engine || (Engine = {}));
+	var monna;
+	(function (monna) {
+	    function passage(name, title, sub, cb) {
+	        Passage.of(name, async (s) => {
+	            prefix(title, s);
+	            await cb(s);
+	            footer(sub, s);
+	        });
+	    }
+	    monna.passage = passage;
+	    function prefix(title, s) {
+	        Engine.Bg.set("https://i.ibb.co/k5J2Ygs/wp.jpg");
+	        Engine.Pos.center();
+	        s.title(title, true);
+	        s.hr();
+	    }
+	    monna.prefix = prefix;
+	    function footer(sub, s) {
+	        link(s, "Повернутись назад", "Start", []);
+	        s.hr();
+	        s.printCenter(sub);
+	    }
+	    monna.footer = footer;
+	    function link(s, name, passage, args) {
+	        s.printCenter(el.link(name, () => {
+	            Passage.goto(passage, args);
+	        }));
+	    }
+	    monna.link = link;
+	})(monna || (monna = {}));
+	var monna;
+	(function (monna) {
+	    const phrases = [
+	        "Зроблено з любов'ю",
+	        "Тільки поки ти мрієш, ти твоє життя ще варте чогось.",
+	        "Мрії дорожчі ніж гроші, бо коли їх нема - гроші лиш для існування",
+	        "Мрій, поки дихаєш.",
+	        "Тільки той хто не здається, не програє в кінці.",
+	        "Падати спробувавши - не погано. Погано не впасти, ніразу не спробувавши",
+	        "Життя на цьому світі одне. Використай його",
+	        "Відродження вже тут"
+	    ];
+	    function pickPhrase() {
+	        return Util.randChoose(phrases) || "???";
+	    }
+	    monna.pickPhrase = pickPhrase;
+	})(monna || (monna = {}));
+	monna.passage("Books", "Книжкова лавочка", "Притулок книжечок", s => {
+	});
+	monna.passage("Engine", "Monna Histea Engine", "Твори свої світи", s => {
+	});
+	monna.passage("Monpedia", "Монпедія", "Енциклопедія про твоїх улюблених персонажів", s => {
+	});
+	monna.passage("News", "Новини", "Що нового?", s => {
+	});
+	Passage.of("Start", s => {
+	    const phrase = monna.pickPhrase() + " (HaxiDenti)";
+	    monna.prefix("Monna Histea", s);
+	    monna.link(s, "📘Монпедія", "Monpedia", [0]);
+	    monna.link(s, "📜Короткі історії", "Stories", [0]);
+	    monna.link(s, "⏲️Новини", "News", [0]);
+	    monna.link(s, "📖Книги", "Books", [0]);
+	    monna.link(s, "🧩Monna Histea Engine", "Engine", [0]);
+	    s.hr();
+	    s.printCenter(phrase);
+	});
+	monna.passage("Stories", "Історії", "Короткі історії", s => {
+	});
+	
+	
+	
+})();
