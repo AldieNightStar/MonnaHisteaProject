@@ -27,7 +27,7 @@ namespace monna {
 
     export function footer(sub: string, s: el.Span) {
         s.hr();
-        s.passln("На початковий Вузол", "Start", []);
+        s.passln("<<< На початковий Вузол", "Start", []);
         
         s.hr();
         s.printCenter(sub);

@@ -2635,7 +2635,7 @@
 	    monna.prefix = prefix;
 	    function footer(sub, s) {
 	        s.hr();
-	        s.passln("На початковий Вузол", "Start", []);
+	        s.passln("<<< На початковий Вузол", "Start", []);
 	        s.hr();
 	        s.printCenter(sub);
 	    }
@@ -2695,70 +2695,43 @@
 	var monna;
 	(function (monna) {
 	    class StoryTeller {
-	        constructor(story) {
+	        constructor(parentSpan, story) {
+	            this.parentSpan = parentSpan;
 	            this.story = story;
 	        }
 	        render(s) {
+	            this.parentSpan.rebuttonln("<< В розділи", () => { });
+	            this.parentSpan.hr();
 	            s.println(this.story);
 	        }
 	    }
 	    monna.StoryTeller = StoryTeller;
-	    class SubStory {
-	        constructor(subBook) {
-	            this.subBook = subBook;
-	        }
-	        render(s) {
-	            const e = new monna.EmojiBook();
-	            Object.keys(this.subBook).forEach(chapterName => {
-	                s.clinkln(e.pickBookEmoji() + chapterName, () => {
-	                    const story = this.subBook[chapterName];
-	                    s.println(new StoryTeller(story));
-	                });
-	            });
-	        }
-	    }
-	    monna.SubStory = SubStory;
 	    class Stories {
 	        render(s) {
 	            const e = new monna.EmojiBook();
-	            Object.keys(monna.STORIES).forEach(name => {
-	                const book = monna.STORIES[name];
-	                s.clinkln(e.pickBookEmoji() + name, () => {
-	                    s.print(new SubStory(book));
+	            const p = new Util.Pageable(Object.keys(monna.STORIES), (chapterName) => {
+	                return el.link(e.pickBookEmoji() + chapterName, () => {
+	                    const story = monna.STORIES[chapterName];
+	                    if (story) {
+	                        Engine.Effect.fadeChange(s.span, 600, () => {
+	                            s.clear();
+	                            s.print(new StoryTeller(s, story));
+	                        });
+	                    }
 	                });
 	            });
+	            s.print(p);
 	        }
 	    }
 	    monna.Stories = Stories;
 	})(monna || (monna = {}));
 	var monna;
 	(function (monna) {
-	    monna.STORY_ALDIE = {};
-	})(monna || (monna = {}));
-	var monna;
-	(function (monna) {
-	    monna.STORY_TIFF = {};
-	})(monna || (monna = {}));
-	var monna;
-	(function (monna) {
-	    monna.STORY_HAXI = {};
-	})(monna || (monna = {}));
-	var monna;
-	(function (monna) {
-	    monna.STORY_NIMFI = {};
-	})(monna || (monna = {}));
-	var monna;
-	(function (monna) {
-	    monna.STORY_BORU = {};
-	})(monna || (monna = {}));
-	var monna;
-	(function (monna) {
+	    const loremIpsum = "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur?";
 	    monna.STORIES = {
-	        "Алдія": monna.STORY_ALDIE,
-	        "Тіффій": monna.STORY_TIFF,
-	        "Хаксі": monna.STORY_HAXI,
-	        "Німферія": monna.STORY_NIMFI,
-	        "Бору Ведей": monna.STORY_BORU,
+	        "Тестова частина 1": loremIpsum + loremIpsum + loremIpsum + loremIpsum + loremIpsum + loremIpsum,
+	        "Тестова частина 2": loremIpsum,
+	        "Тестова частина 3": loremIpsum,
 	    };
 	})(monna || (monna = {}));
 	monna.passage("Assets", "Assets", "Список ассетів до движка", s => {
