@@ -39,4 +39,12 @@ namespace monna {
             a.href = link;
         }));
     }
+
+    export function message(s: el.Span, message: string) {
+        Engine.Effect.fadeChange(s.span, 600, () => {
+            s.clear();
+            s.println(message);
+            s.relink("Зрозуміло", () => {});
+        })
+    }
 }

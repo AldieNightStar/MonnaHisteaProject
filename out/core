@@ -2647,6 +2647,14 @@
 	        }));
 	    }
 	    monna.href = href;
+	    function message(s, message) {
+	        Engine.Effect.fadeChange(s.span, 600, () => {
+	            s.clear();
+	            s.println(message);
+	            s.relink("Зрозуміло", () => { });
+	        });
+	    }
+	    monna.message = message;
 	})(monna || (monna = {}));
 	var monna;
 	(function (monna) {
@@ -2658,7 +2666,12 @@
 	        "Тільки той хто не здається, не програє в кінці.",
 	        "Падати спробувавши - не погано. Погано не впасти, ніразу не спробувавши",
 	        "Життя на цьому світі одне. Використай його",
-	        "Відродження вже тут"
+	        "Відродження вже тут",
+	        "Як прекрасно коли тебе нічого не обтяжує, і як зле коли стільки всього",
+	        "Не відволікайся",
+	        "Вперед, вперед, і тільки вперед",
+	        "Я ж бляха Хаксі!",
+	        "Потрібно вірити до кінця, інакше хто, як не ти, зробить це."
 	    ];
 	    function pickPhrase() {
 	        return Util.randChoose(phrases) || "???";
@@ -2720,9 +2733,7 @@
 	})(monna || (monna = {}));
 	var monna;
 	(function (monna) {
-	    monna.STORY_ALDIE = {
-	        "Моя маленька таємниця": "Таке от"
-	    };
+	    monna.STORY_ALDIE = {};
 	})(monna || (monna = {}));
 	var monna;
 	(function (monna) {
@@ -2754,7 +2765,11 @@
 	});
 	monna.passage("Books", "Книжкова лавочка", "Притулок книжечок", s => {
 	    const e = new monna.EmojiBook();
-	    const m = (name) => s.linkln(e.pickBookEmoji() + name, () => window.alert("У прогресі"));
+	    const m = (name) => {
+	        s.linkln(e.pickBookEmoji() + name, () => {
+	            monna.message(s, name + " - У прогресі");
+	        });
+	    };
 	    m("Щоденники Хаксі");
 	    m("Приручена Гістерія");
 	    m("Nimmie del Ferio");
