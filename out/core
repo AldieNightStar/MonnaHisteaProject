@@ -2623,6 +2623,7 @@
 	    }
 	    monna.prefix = prefix;
 	    function footer(sub, s) {
+	        s.hr();
 	        link(s, "Повернутись назад", "Start", []);
 	        s.hr();
 	        s.printCenter(sub);
@@ -2653,12 +2654,31 @@
 	    monna.pickPhrase = pickPhrase;
 	})(monna || (monna = {}));
 	monna.passage("Books", "Книжкова лавочка", "Притулок книжечок", s => {
+	    const books = ["📖", "📜", "📘", "📕", "📗", "📙", "🧾"];
+	    let bookId = -1;
+	    const pickBook = () => {
+	        bookId = (bookId + 1) % books.length;
+	        return books[bookId];
+	    };
+	    const m = (name) => s.linkln(pickBook() + name, () => window.alert("У прогресі"));
+	    m("Щоденники Хаксі");
+	    m("Приручена Гістерія");
+	    m("Поклик Редестри");
+	    m("Nimmie del Ferio");
+	    m("Зіткнення світів");
+	    m("Остання подорож");
+	    m("Капітан РебітФіш");
+	    m("Хранитель Ангори");
+	    m("Енеопсис Марсіанський проект");
 	});
 	monna.passage("Engine", "Monna Histea Engine", "Твори свої світи", s => {
 	});
 	monna.passage("Monpedia", "Монпедія", "Енциклопедія про твоїх улюблених персонажів", s => {
 	});
 	monna.passage("News", "Новини", "Що нового?", s => {
+	    s.link("▶️Youtube канал", () => {
+	        window.open("https://www.youtube.com/channel/UCMWGELHuJKEkrd-FhlsuLzg");
+	    });
 	});
 	Passage.of("Start", s => {
 	    const phrase = monna.pickPhrase() + " (HaxiDenti)";

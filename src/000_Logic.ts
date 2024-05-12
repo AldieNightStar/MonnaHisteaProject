@@ -15,6 +15,7 @@ namespace monna {
     }
 
     export function footer(sub: string, s: el.Span) {
+        s.hr();
         link(s, "Повернутись назад", "Start", []);
         
         s.hr();
