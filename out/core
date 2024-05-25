@@ -998,35 +998,54 @@
 	        }
 	        clink(caption, cb) {
 	            return this.link(caption, () => {
-	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
-	                    this.clear();
+	                this.fadeChange(() => {
 	                    cb();
 	                });
 	            });
 	        }
 	        clinkln(caption, cb) {
 	            return this.linkln(caption, () => {
-	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
-	                    this.clear();
+	                this.fadeChange(() => {
 	                    cb();
 	                });
 	            });
 	        }
 	        cbutton(caption, cb) {
 	            return this.button(caption, () => {
-	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
-	                    this.clear();
+	                this.fadeChange(() => {
 	                    cb();
 	                });
 	            });
 	        }
 	        cbuttonln(caption, cb) {
 	            return this.buttonln(caption, () => {
-	                Engine.Effect.fadeChange(this.span, this.reloadTime, () => {
-	                    this.clear();
+	                this.fadeChange(() => {
 	                    cb();
 	                });
 	            });
+	        }
+	        fadeOut(ms) {
+	            let time = ms;
+	            if (isNull(time))
+	                time = this.reloadTime;
+	            Util.declick(this.span);
+	            return Engine.Effect.fadeOut(this.span, time);
+	        }
+	        fadeIn(ms) {
+	            let time = ms;
+	            if (isNull(time))
+	                time = this.reloadTime;
+	            return Engine.Effect.fadeIn(this.span, time);
+	        }
+	        async fadeChange(cb, ms) {
+	            let time = ms;
+	            if (isNull(time))
+	                time = this.reloadTime;
+	            time /= 2;
+	            await this.fadeOut(time);
+	            this.clear();
+	            await cb();
+	            await this.fadeIn(time);
 	        }
 	    }
 	    el.Span = Span;
@@ -2688,7 +2707,7 @@
 	        }
 	    }
 	    Releases.releases = [
-	        ["2.2.1", "https://ouo.io/xaSmeJc"],
+	        ["2.2.2", "https://ouo.io/0kepQqN"],
 	    ];
 	    monna.Releases = Releases;
 	})(monna || (monna = {}));
