@@ -1,5 +1,4 @@
 (function () {
-	window.isDebugMode = true;
 	function isNull(e) {
 	    return e === null || e === undefined;
 	}
@@ -374,6 +373,14 @@
 	                particle.y = -image.naturalHeight;
 	        }
 	    });
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Config;
+	    (function (Config) {
+	        Config.autoSaveOnGoto = false;
+	        Config.autoSaveTimer = false;
+	    })(Config = Engine.Config || (Engine.Config = {}));
 	})(Engine || (Engine = {}));
 	var el;
 	(function (el) {
@@ -1044,7 +1051,7 @@
 	            time /= 2;
 	            await this.fadeOut(time);
 	            this.clear();
-	            await cb();
+	            cb();
 	            await this.fadeIn(time);
 	        }
 	    }
@@ -1456,7 +1463,7 @@
 	        }
 	        static async fadeChange(element, ms, cb) {
 	            await this.fadeOut(element, ms / 2);
-	            await cb(element);
+	            cb(element);
 	            await this.fadeIn(element, ms / 2);
 	        }
 	    }
@@ -1789,6 +1796,10 @@
 	    }
 	    Game.v = v;
 	    ;
+	    function save(file) {
+	        Engine.Variables.save();
+	    }
+	    Game.save = save;
 	})(Game || (Game = {}));
 	var RPC;
 	(function (RPC) {
@@ -2094,7 +2105,8 @@
 	                    data.args = args;
 	                }
 	                el.print(Engine.app, el.of("span", rawSpan => passageFunc(new el.PassageSpan(rawSpan))));
-	                Engine.Variables.save();
+	                if (Engine.Config.autoSaveOnGoto)
+	                    Engine.Variables.save();
 	            });
 	            return true;
 	        }
@@ -2619,7 +2631,11 @@
 	        static saveWithTimer() {
 	            if (this._timer)
 	                this._timer.stop();
-	            this._timer = new Engine.Timer(setInterval(() => this.save(), 5000), true);
+	            this._timer = new Engine.Timer(setInterval(() => {
+	                if (Engine.Config.autoSaveTimer) {
+	                    this.save();
+	                }
+	            }, 5000), true);
 	        }
 	    }
 	    Engine.Variables = Variables;
@@ -2707,7 +2723,7 @@
 	        }
 	    }
 	    Releases.releases = [
-	        ["2.2.2", "https://ouo.io/0kepQqN"],
+	        ["2.3.0", "https://ouo.io/ywh4fmo"],
 	    ];
 	    monna.Releases = Releases;
 	})(monna || (monna = {}));

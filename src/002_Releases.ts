@@ -2,7 +2,7 @@ namespace monna {
     export class Releases implements el.IRenderable {
         
         private static releases = [
-            ["2.2.2", "https://ouo.io/0kepQqN"],
+            ["2.3.0", "https://ouo.io/ywh4fmo"],
         ]
 
         render(s: el.Span): void | Promise<void> {
