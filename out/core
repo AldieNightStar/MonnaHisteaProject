@@ -1,4 +1,5 @@
 (function () {
+	window.isDebugMode = true;
 	function isNull(e) {
 	    return e === null || e === undefined;
 	}
@@ -9,7 +10,7 @@
 	var Engine;
 	(function (Engine) {
 	})(Engine || (Engine = {}));
-	window.addEventListener("load", function () {
+	window.addEventListener("load", async function () {
 	    Engine.Variables.load();
 	    Engine.app = document.getElementById("app");
 	    if (window['isDebugMode'] === true)
@@ -21,8 +22,735 @@
 	    Engine.Bg.restore();
 	    Engine.BgCanvas.restore();
 	    Engine.Timer.loadNovelStart();
+	    await Engine.internal.startOnLoads();
 	    Passage._reloadOnStart();
 	});
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            function doInterpolation(a, b, percent, inter) {
+	                if (percent > 1)
+	                    percent = 1;
+	                if (percent < 0)
+	                    percent = 0;
+	                let newPercent = inter.func(percent);
+	                if (newPercent > 1)
+	                    newPercent = 1;
+	                if (newPercent < 0)
+	                    newPercent = 0;
+	                const diff = b - a;
+	                const percentFrame = diff * newPercent;
+	                return percentFrame + a;
+	            }
+	            internal.doInterpolation = doInterpolation;
+	            function getPercentBetweenFrames(a, b, frame) {
+	                const diff = b - a;
+	                if (diff === 0)
+	                    return 1;
+	                const frameSinceA = frame - a;
+	                return frameSinceA / diff;
+	            }
+	            internal.getPercentBetweenFrames = getPercentBetweenFrames;
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        class AnimationInterpolation {
+	            constructor(name, short, func) {
+	                this.name = name;
+	                this.short = short;
+	                this.func = func;
+	            }
+	        }
+	        Animate.AnimationInterpolation = AnimationInterpolation;
+	        Animate.LINEAR = new AnimationInterpolation("Linear", "🟢", x => x);
+	        Animate.EASE_IN = new AnimationInterpolation("Ease In", "◀️", (x) => x * x * x);
+	        Animate.EASE_OUT = new AnimationInterpolation("Ease Out", "▶️", (x) => 1 - Math.pow(1 - x, 3));
+	        Animate.STATIC = new AnimationInterpolation("Static", "🔴", () => 0);
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        class KeyFrame {
+	            constructor(frame, value, interpolation) {
+	                this.frame = frame;
+	                this.value = value;
+	                this.interpolation = interpolation;
+	            }
+	        }
+	        Animate.KeyFrame = KeyFrame;
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        class TimeAnimation {
+	            constructor() {
+	                this.timeLines = new Map();
+	            }
+	            of(name) {
+	                let t = this.timeLines.get(name);
+	                if (isNull(t)) {
+	                    t = new Animate.TimeLine(undefined, 0, [], false);
+	                    this.timeLines.set(name, t);
+	                }
+	                return t;
+	            }
+	            debug(s) {
+	                s.print(new Animate.internal.TimeAnimationElement(this));
+	                return this;
+	            }
+	            load(obj) {
+	                if (isNull(obj))
+	                    return this;
+	                if (this.timeLines.size < 1) {
+	                    throw new Error("Nothing to load from JSON. No Timeline defined.");
+	                }
+	                Animate.internal.TimeLineJson.load(this, obj);
+	                return this;
+	            }
+	        }
+	        Animate.TimeAnimation = TimeAnimation;
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        function nonRepeatingModifier(f) {
+	            if (f.modifier)
+	                return f;
+	            let lastValue = 0;
+	            const newModifier = (value, forceUpdate) => {
+	                if (!forceUpdate && value === lastValue)
+	                    return;
+	                lastValue = value;
+	                return f(value);
+	            };
+	            newModifier.modifier = true;
+	            return newModifier;
+	        }
+	        class TimeLineLayer {
+	            constructor(name = "unknown", keyFrames, modifier) {
+	                this.name = name;
+	                this.keyFrames = keyFrames;
+	                this.modifier = modifier;
+	                this.group = "root";
+	                this.modifier = nonRepeatingModifier(this.modifier);
+	                if (this.name.indexOf(":") !== -1) {
+	                    const [groupName] = this.name.split(":");
+	                    this.group = groupName.trim();
+	                }
+	            }
+	            getValueAt(frame) {
+	                let frames = this.keyFrames.filter(f => f.frame <= frame);
+	                let previous;
+	                if (frames.length < 1) {
+	                    previous = new Animate.KeyFrame(0, 0, Animate.STATIC);
+	                }
+	                else {
+	                    previous = frames[frames.length - 1];
+	                }
+	                frames = this.keyFrames.filter(f => f.frame > frame);
+	                if (frames.length < 1)
+	                    return previous.value;
+	                const next = frames[0];
+	                let percent = Animate.internal.getPercentBetweenFrames(previous.frame, next.frame, frame);
+	                percent = Animate.internal.doInterpolation(previous.value, next.value, percent, next.interpolation);
+	                return percent;
+	            }
+	            lastFrame() {
+	                if (this.keyFrames.length < 1)
+	                    return 0;
+	                return this.keyFrames[this.keyFrames.length - 1].frame;
+	            }
+	            isEnded(frame) {
+	                return frame > this.lastFrame();
+	            }
+	            key(frame, value, interpolation = Animate.LINEAR) {
+	                let k = this.getKeyAt(frame);
+	                if (isNull(k))
+	                    k = new Animate.KeyFrame(frame, value, interpolation);
+	                k.value = value;
+	                k.interpolation = interpolation;
+	                this.keyFrames.push(k);
+	                this._sortFrames();
+	                return this;
+	            }
+	            getKeyAt(frame) {
+	                const frames = this.keyFrames.filter(k => k.frame === frame);
+	                if (frames.length < 1)
+	                    return null;
+	                return frames[0];
+	            }
+	            _sortFrames() {
+	                this.keyFrames.sort((a, b) => a.frame - b.frame);
+	            }
+	            clearKeys(frameStart, frameEnd) {
+	                this.keyFrames = this.keyFrames.filter(k => !(k.frame >= frameStart && k.frame <= frameEnd));
+	                this._sortFrames();
+	            }
+	        }
+	        Animate.TimeLineLayer = TimeLineLayer;
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        const FRAME_MS = 50;
+	        class TimeLine {
+	            constructor(onEnd, time = 0, layers = [], isRepeating = false) {
+	                this.onEnd = onEnd;
+	                this.time = time;
+	                this.layers = layers;
+	                this.isRepeating = isRepeating;
+	                this._timer = null;
+	            }
+	            _printDebug(s) {
+	                s.hr();
+	                s.println(new Animate.internal.TimeLineElement(this, 0));
+	                return this;
+	            }
+	            layer(name, mod, f) {
+	                const existen = this.layers.filter(l => l.name === name);
+	                if (existen.length > 0)
+	                    throw Error("Layer \"" + name + "\" is already exists");
+	                let layer = new Animate.TimeLineLayer(name, [], mod);
+	                this.layers.push(layer);
+	                if (!isNull(f))
+	                    f(layer);
+	                return this;
+	            }
+	            repeat() {
+	                this.isRepeating = true;
+	                return this;
+	            }
+	            playStep(frame, increaseTime = true) {
+	                if (!isNull(frame))
+	                    this.time = frame;
+	                const ended = this.isEnded();
+	                if (ended)
+	                    return true;
+	                for (let layer of this.layers) {
+	                    const value = layer.getValueAt(this.time);
+	                    const keyPresent = !isNull(layer.getKeyAt(this.time));
+	                    layer.modifier(value, keyPresent);
+	                }
+	                if (increaseTime)
+	                    this.time += 1;
+	                return false;
+	            }
+	            play(frame) {
+	                if (!isNull(frame))
+	                    this.time = frame;
+	                if (!isNull(this._timer))
+	                    this._timer?.stop();
+	                this.layers.forEach(l => l._sortFrames());
+	                this._timer = Engine.Timer.interval(FRAME_MS, () => {
+	                    const ended = this.playStep();
+	                    if (ended) {
+	                        if (this.isRepeating) {
+	                            this.time = 0;
+	                        }
+	                        else {
+	                            if (ended)
+	                                this._timer.stop();
+	                            if (!isNull(this.onEnd))
+	                                this.onEnd();
+	                        }
+	                    }
+	                });
+	                return this;
+	            }
+	            stop() {
+	                if (!isNull(this._timer))
+	                    this._timer.stop();
+	                this.time = 0;
+	                return this;
+	            }
+	            isEnded() {
+	                const nonEndedLayers = this.layers.filter(l => !l.isEnded(this.time));
+	                return nonEndedLayers.length < 1;
+	            }
+	            waitEnds() {
+	                return new Promise(ok => this.onEnd = ok);
+	            }
+	        }
+	        Animate.TimeLine = TimeLine;
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            class TimeLineJson {
+	                static load(animation, json) {
+	                    loadAnimation(json, animation);
+	                }
+	                static save(animation) {
+	                    return saveAnimation(animation);
+	                }
+	                static saveFile(animation) {
+	                    const fileName = Passage.current() + "_animation.json";
+	                    el.saveFile("text/json", fileName, JSON.stringify(this.save(animation)));
+	                }
+	                static async loadFile(animation) {
+	                    this.load(animation, JSON.parse(await el.loadFile()));
+	                }
+	            }
+	            internal.TimeLineJson = TimeLineJson;
+	            function loadInterpolation(name) {
+	                if (name === "L") {
+	                    return Animate.LINEAR;
+	                }
+	                else if (name === "S") {
+	                    return Animate.STATIC;
+	                }
+	                else if (name === "I") {
+	                    return Animate.EASE_IN;
+	                }
+	                else if (name === "O") {
+	                    return Animate.EASE_OUT;
+	                }
+	                return Animate.LINEAR;
+	            }
+	            function loadKeyFrame(o) {
+	                if (isNull(o.frame))
+	                    throw new Error("Can't restore keyframe. Invalid JSON");
+	                if (isNull(o.value))
+	                    throw new Error("Can't restore keyframe. Invalid JSON");
+	                if (isNull(o.interpol))
+	                    throw new Error("Can't restore keyframe. Invalid JSON");
+	                return new Animate.KeyFrame(o.frame, o.value, loadInterpolation(o.interpol));
+	            }
+	            function loadTimeLayer(list, name, mod) {
+	                const foundByName = list.filter(o => o.name === name);
+	                if (foundByName.length < 1)
+	                    return null;
+	                const layerJson = foundByName[0];
+	                if (isNull(layerJson.frames))
+	                    throw new Error(`Can't load ${name} layer JSON. No frames array`);
+	                const frames = layerJson.frames.map(f => loadKeyFrame(f));
+	                return new Animate.TimeLineLayer(name, frames, mod);
+	            }
+	            function loadTimeLine(jsonList, timeline) {
+	                const newLayers = [];
+	                for (let layer of timeline.layers) {
+	                    const newLayer = loadTimeLayer(jsonList, layer.name, layer.modifier);
+	                    if (isNull(newLayer)) {
+	                        newLayers.push(layer);
+	                    }
+	                    else {
+	                        newLayers.push(newLayer);
+	                    }
+	                }
+	                timeline.layers = newLayers;
+	            }
+	            function loadAnimation(obj, animation) {
+	                const names = Object.keys(obj).sort();
+	                for (let name of names) {
+	                    const timeline = animation.timeLines.get(name);
+	                    if (isNull(timeline)) {
+	                        console.warn(`Timeline ${name} is not found to load from JSON animation`);
+	                        continue;
+	                    }
+	                    let timeLineJsonList = obj[name];
+	                    loadTimeLine(timeLineJsonList, timeline);
+	                }
+	            }
+	            function saveKeyFrame(key) {
+	                return {
+	                    "frame": key.frame,
+	                    "value": key.value,
+	                    "interpol": saveInterpolation(key.interpolation)
+	                };
+	            }
+	            function saveTimeLayer(layer) {
+	                return {
+	                    "name": layer.name,
+	                    "frames": layer.keyFrames.map(saveKeyFrame)
+	                };
+	            }
+	            function saveTimeLine(timeline) {
+	                return timeline.layers.map(saveTimeLayer);
+	            }
+	            function saveAnimation(animation) {
+	                const names = [...animation.timeLines.keys()].sort();
+	                const animationJson = {};
+	                for (let name of names) {
+	                    const timeline = animation.of(name);
+	                    const timeLineJsonArray = saveTimeLine(timeline);
+	                    animationJson[name] = timeLineJsonArray;
+	                }
+	                return animationJson;
+	            }
+	            function saveInterpolation(inter) {
+	                if (inter === Animate.LINEAR) {
+	                    return "L";
+	                }
+	                else if (inter === Animate.STATIC) {
+	                    return "S";
+	                }
+	                else if (inter === Animate.EASE_IN) {
+	                    return "I";
+	                }
+	                else if (inter === Animate.EASE_OUT) {
+	                    return "O";
+	                }
+	                throw new Error("Unknown Interpolation value");
+	            }
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            class TimeAnimationElement {
+	                constructor(animation) {
+	                    this.animation = animation;
+	                    this.currentAnimation = null;
+	                }
+	                render(s) {
+	                    s.reloadTime = 0;
+	                    if (isNull(this.currentAnimation))
+	                        return this.renderChoice(s);
+	                    this.renderTimeline(s);
+	                }
+	                renderChoice(s) {
+	                    s.println("Animations:");
+	                    s.hr();
+	                    const animationNames = [...this.animation.timeLines.keys()].sort();
+	                    for (let animationName of animationNames) {
+	                        s.rebutton("🎬" + animationName, () => {
+	                            this.currentAnimation = animationName;
+	                        });
+	                    }
+	                }
+	                renderTimeline(s) {
+	                    s.rebutton("❌", () => this.currentAnimation = null);
+	                    this.renderSaveLoad(s);
+	                    this.renderJsonButton(s);
+	                    s.print("🎬" + this.currentAnimation);
+	                    this.animation.of(this.currentAnimation)._printDebug(s);
+	                }
+	                renderSaveLoad(s) {
+	                    s.print(new internal.TimeLineSaveLoadElement(this.animation, () => s.reload()));
+	                }
+	                renderJsonButton(s) {
+	                    const caption = "✅GEN";
+	                    const b = s.button(caption, () => {
+	                        const o = internal.TimeLineJson.save(this.animation);
+	                        const content = JSON.stringify(o);
+	                        Util.copy(content);
+	                        b.innerHTML = "✅Copied";
+	                        Engine.Timer.single(1000, () => { b.innerHTML = caption; });
+	                    });
+	                }
+	            }
+	            internal.TimeAnimationElement = TimeAnimationElement;
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            class TimeLineEditKeyFrame {
+	                constructor(timeline, layer, frame, value, interpolation, doneFunc) {
+	                    this.timeline = timeline;
+	                    this.layer = layer;
+	                    this.frame = frame;
+	                    this.value = value;
+	                    this.interpolation = interpolation;
+	                    this.doneFunc = doneFunc;
+	                }
+	                render(s) {
+	                    s.print(this.frame + ": ");
+	                    s.button("⭕Cancel", () => { this.doneFunc(); });
+	                    const inp = el.of("input");
+	                    inp.value = "" + this.value;
+	                    s.print(inp);
+	                    this.renderAdjuster(s, inp);
+	                    this.buttonInterpolation(s, inp, Animate.LINEAR);
+	                    this.buttonInterpolation(s, inp, Animate.STATIC);
+	                    this.buttonInterpolation(s, inp, Animate.EASE_IN);
+	                    this.buttonInterpolation(s, inp, Animate.EASE_OUT);
+	                    s.button("⛔Delete", () => {
+	                        this.layer.clearKeys(this.frame, this.frame);
+	                        this.doneFunc();
+	                    });
+	                    s.print(" ::: " + this.layer.name);
+	                    Engine.Timer.single(50, () => { inp.focus(); inp.select(); });
+	                    this.testModifier(parseFloat(inp.value));
+	                }
+	                testModifier(modifier) {
+	                    this.timeline.stop();
+	                    this.timeline.playStep(this.frame);
+	                    this.timeline.time -= 1;
+	                    this.layer.modifier(modifier);
+	                }
+	                renderAdjuster(s, inp) {
+	                    el.adjuster(s, (x, y) => {
+	                        let value = parseFloat(inp.value) + (x * 0.1);
+	                        value = Math.floor(value * 100) / 100;
+	                        inp.value = "" + value;
+	                        this.layer.modifier(value);
+	                    });
+	                }
+	                saveButton(s, caption, inp, cb) {
+	                    s.button(caption, () => {
+	                        const value = parseFloat(inp.value);
+	                        this.value = value;
+	                        cb();
+	                        this.layer.key(this.frame, this.value, this.interpolation);
+	                        this.doneFunc();
+	                    });
+	                }
+	                buttonInterpolation(s, inp, interp) {
+	                    this.saveButton(s, interp.short + interp.name, inp, () => this.interpolation = interp);
+	                }
+	            }
+	            internal.TimeLineEditKeyFrame = TimeLineEditKeyFrame;
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            class TimeLineElement {
+	                constructor(timeline, startingFrame = 0) {
+	                    this.timeline = timeline;
+	                    this.startingFrame = startingFrame;
+	                    this._activeGroup = null;
+	                    this._groups = new Set();
+	                    this.loadGroups();
+	                }
+	                render(s) {
+	                    s.reloadTime = 0;
+	                    const frameCount = this.estimateFrameCount();
+	                    this.renderTopBar(s, frameCount);
+	                    this.renderScrollableLayers(s, frameCount);
+	                }
+	                renderScrollableLayers(s, frameCount) {
+	                    const span = el.span(s => {
+	                        s.span.style.display = "block";
+	                        s.span.style.width = "100%";
+	                        s.span.style.height = "400px";
+	                        s.span.style.overflow = "auto";
+	                        s.reloadTime = 0;
+	                        for (let layer of this.timeline.layers) {
+	                            this.renderLayer(s, layer, frameCount);
+	                        }
+	                    });
+	                    s.print(span);
+	                }
+	                renderTopBar(s, frameCount) {
+	                    this.renderNavigationButtons(s, frameCount);
+	                    this.renderGroupButtons(s);
+	                }
+	                renderNavigationButtons(s, frameCount) {
+	                    s.print(new internal.TimeLinePlayback(this.timeline, this.timeline.time));
+	                    s.print(" ::: ");
+	                    s.rebutton("⏮️", () => {
+	                        this.startingFrame -= frameCount;
+	                        if (this.startingFrame < 0) {
+	                            this.startingFrame = 0;
+	                        }
+	                    });
+	                    s.print("[" + this.startingFrame + " / " + (this.startingFrame + frameCount) + "]");
+	                    s.rebutton("⏭️", () => this.startingFrame += frameCount);
+	                }
+	                renderGroupButtons(s) {
+	                    for (let group of this._groups) {
+	                        if (this._activeGroup === group) {
+	                            const b = s.rebutton(group, () => this._activeGroup = null);
+	                            b.style.color = "cyan";
+	                        }
+	                        else {
+	                            s.rebutton(group, () => this._activeGroup = group);
+	                        }
+	                    }
+	                }
+	                renderLayer(s, layer, frameCount) {
+	                    if (!isNull(this._activeGroup) && layer.group !== this._activeGroup)
+	                        return;
+	                    s.println(new internal.TimeLineLayerElement(this.timeline, layer, frameCount, this.startingFrame, () => s.reload()));
+	                }
+	                estimateFrameCount() {
+	                    let count = window.innerWidth / 45;
+	                    count = Math.floor(count / 10) * 10;
+	                    return count;
+	                }
+	                loadGroups() {
+	                    this.timeline.layers.forEach(l => this._groups.add(l.group));
+	                }
+	            }
+	            internal.TimeLineElement = TimeLineElement;
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            class TimeLineLayerElement {
+	                constructor(timeline, layer, frameCount = 50, startFrame = 0, timelineReload) {
+	                    this.timeline = timeline;
+	                    this.layer = layer;
+	                    this.frameCount = frameCount;
+	                    this.startFrame = startFrame;
+	                    this.timelineReload = timelineReload;
+	                    this.editFrame = null;
+	                    this.buttonsColor = this.generateButtonsColor();
+	                }
+	                render(s) {
+	                    s.reloadTime = 30;
+	                    if (!isNull(this.editFrame))
+	                        return this.editKeyFrame(s);
+	                    this.renderLayerCaption(s);
+	                    for (let i = 0; i < this.frameCount; i++) {
+	                        const frameNumber = this.startFrame + i;
+	                        this.keyframeButton(s, frameNumber);
+	                        if (i % 10 === 0 && i !== 0)
+	                            s.print("||");
+	                    }
+	                }
+	                editKeyFrame(s) {
+	                    s.print(new internal.TimeLineEditKeyFrame(this.timeline, this.layer, this.editFrame.frame, this.editFrame.value, this.editFrame.interpolation, () => { this.editFrame = null; s.reload(); }));
+	                }
+	                generateButtonsColor() {
+	                    const hash = Util.hash(this.layer.group);
+	                    const r = Math.abs((hash * 1.32) % 5) * 25;
+	                    const g = Math.abs((hash * 1.64) % 6) * 20;
+	                    const b = Math.abs((hash * 1.92) % 7) * 17;
+	                    return `rgb(${r}, ${g}, ${b})`;
+	                }
+	                keyframeButton(s, frame) {
+	                    let value;
+	                    let interpol;
+	                    let caption;
+	                    let k = this.layer.getKeyAt(frame);
+	                    if (isNull(k)) {
+	                        value = this.layer.getValueAt(frame);
+	                        interpol = Animate.LINEAR;
+	                        caption = ".";
+	                        k = new Animate.KeyFrame(frame, value, interpol);
+	                    }
+	                    else {
+	                        value = k.value;
+	                        interpol = k.interpolation;
+	                        caption = interpol.short;
+	                    }
+	                    const button = s.rebutton(caption, () => {
+	                        if (this.timeline.time === frame) {
+	                            this.editFrame = k;
+	                        }
+	                        else {
+	                            this.testFrame(frame);
+	                            this.timelineReload();
+	                        }
+	                    });
+	                    button.style.fontSize = "12px";
+	                    button.style.minWidth = "32px";
+	                    button.style.borderColor = this.buttonsColor;
+	                    if (this.timeline.time === frame) {
+	                        button.style.backgroundColor = "grey";
+	                    }
+	                }
+	                renderLayerCaption(s) {
+	                    s.print(el.span(ss => {
+	                        ss.print(this.layer.name);
+	                        ss.span.style.display = "table-caption";
+	                        ss.span.style.minWidth = "150px";
+	                        ss.span.style.maxWidth = "150px";
+	                    }));
+	                    s.rebutton("🧹", () => this.layer.clearKeys(this.startFrame, this.startFrame + this.frameCount - 1));
+	                }
+	                testFrame(frame) {
+	                    this.timeline.stop();
+	                    this.timeline.playStep(frame, false);
+	                }
+	            }
+	            internal.TimeLineLayerElement = TimeLineLayerElement;
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            class TimeLinePlayback {
+	                constructor(timeline, startFrame) {
+	                    this.timeline = timeline;
+	                    this.startFrame = startFrame;
+	                }
+	                render(s) {
+	                    s.reloadTime = 0;
+	                    s.button("▶️", () => this.timeline.play(0));
+	                    s.button("⏹️", () => { this.timeline.stop(); this.timeline.time = this.startFrame; });
+	                    s.button("▶️[" + this.startFrame + "]", () => this.timeline.play(this.startFrame));
+	                    s.rebutton("🔃", () => this.startFrame = this.timeline.time);
+	                    let repeatingCaption = "ON";
+	                    if (!this.timeline.isRepeating)
+	                        repeatingCaption = "OFF";
+	                    s.rebutton("🔁" + repeatingCaption, () => this.timeline.isRepeating = !this.timeline.isRepeating);
+	                }
+	            }
+	            internal.TimeLinePlayback = TimeLinePlayback;
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var Animate;
+	    (function (Animate) {
+	        var internal;
+	        (function (internal) {
+	            class TimeLineSaveLoadElement {
+	                constructor(animation, reload) {
+	                    this.animation = animation;
+	                    this.reload = reload;
+	                }
+	                ;
+	                render(s) {
+	                    s.button("📂", () => this.load());
+	                    s.button("💾", () => this.save());
+	                }
+	                save() {
+	                    internal.TimeLineJson.saveFile(this.animation);
+	                }
+	                async load() {
+	                    await internal.TimeLineJson.loadFile(this.animation);
+	                    this.reload();
+	                }
+	            }
+	            internal.TimeLineSaveLoadElement = TimeLineSaveLoadElement;
+	        })(internal = Animate.internal || (Animate.internal = {}));
+	    })(Animate = Engine.Animate || (Engine.Animate = {}));
+	})(Engine || (Engine = {}));
 	var Game;
 	(function (Game) {
 	    class ProxyBuilderParameter {
@@ -87,7 +815,7 @@
 	(function (Engine) {
 	    class BgCanvas {
 	        static getApi(data) {
-	            return new el.internal.CanvasApi(this.getCanvas(), this.context(), data);
+	            return new Engine.internal.CanvasApi(this.getCanvas(), this.context(), data);
 	        }
 	        static _data() {
 	            if (isNull(V.canvas_data))
@@ -189,6 +917,152 @@
 	    }
 	    BgCanvas.apps = {};
 	    Engine.BgCanvas = BgCanvas;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var internal;
+	    (function (internal) {
+	        class CanvasApi {
+	            constructor(canvas, ctx, dat) {
+	                this.canvas = canvas;
+	                this.ctx = ctx;
+	                this.dat = dat;
+	                this.clickHandlers = [];
+	                this.lastFontSize = 0;
+	                this.lastFontName = "System";
+	            }
+	            waitClick() {
+	                return new Promise(ok => {
+	                    this.clickHandlers.push((x, y) => ok([x, y]));
+	                });
+	            }
+	            _registerClick(x, y) {
+	                if (this.clickHandlers.length > 0) {
+	                    this.clickHandlers.forEach(c => c(x, y));
+	                    this.clickHandlers = [];
+	                }
+	            }
+	            rect(x, y, w, h) {
+	                this.ctx.fillRect(x, y, w, h);
+	            }
+	            rectRotated(x, y, w, h, degree, ax, ay) {
+	                this.rotated(degree, x + ax, y + ay, () => this.rect(-ax, -ay, w, h));
+	            }
+	            text(t, x, y) {
+	                this.ctx.fillText(t, x, y + this.lastFontSize);
+	            }
+	            color(c) {
+	                this.ctx.fillStyle = c;
+	            }
+	            font(name, size = 32) {
+	                this.ctx.font = size + "px " + name;
+	                this.lastFontName = name;
+	                this.lastFontSize = size;
+	            }
+	            image(img, x, y, w, h) {
+	                this.ctx.imageSmoothingEnabled = false;
+	                if (img instanceof HTMLImageElement) {
+	                    this.ctx.drawImage(img, x, y, w, h);
+	                }
+	                else if (img instanceof CanvasAPISprite) {
+	                    this.ctx.drawImage(img.image, img.subX, img.subY, img.subW, img.subH, x, y, w, h);
+	                }
+	            }
+	            imageRotated(img, x, y, w, h, degree, ax, ay) {
+	                this.rotated(degree, x + ax, y + ay, () => { this.image(img, -ax, -ay, w, h); });
+	            }
+	            spriteOf(img, x, y, w, h) {
+	                return new CanvasAPISprite(img, x, y, w, h);
+	            }
+	            tileSet(img, tileWidth, tileHeight) {
+	                let sprites = [];
+	                if (img instanceof HTMLImageElement) {
+	                    const tileXCount = Math.floor(img.naturalWidth / tileWidth);
+	                    const tileYCount = Math.floor(img.naturalWidth / tileWidth);
+	                    for (let y = 0; y < tileYCount; y++) {
+	                        for (let x = 0; x < tileXCount; x++) {
+	                            sprites.push(new CanvasAPISprite(img, x * tileWidth, y * tileHeight, tileWidth, tileHeight));
+	                        }
+	                    }
+	                }
+	                return sprites;
+	            }
+	            clear() {
+	                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+	            }
+	            size() {
+	                return [this.canvas.width, this.canvas.height];
+	            }
+	            drawing(f) {
+	                const timer = Engine.Timer.interval(16, () => {
+	                    if (!this.canvas.isConnected) {
+	                        timer.stop();
+	                        return;
+	                    }
+	                    this.clear();
+	                    f();
+	                });
+	            }
+	            rotated(deg, x, y, fn) {
+	                this.ctx.save();
+	                this.ctx.translate(x, y);
+	                this.ctx.rotate(deg * Math.PI / 180);
+	                fn();
+	                this.ctx.translate(-x, -y);
+	                this.ctx.restore();
+	            }
+	            opacity(n) {
+	                this.ctx.globalAlpha = n;
+	            }
+	            tiled(w, h) {
+	                return new CanvasTiledApi(this, this.lastFontName, w, h);
+	            }
+	        }
+	        internal.CanvasApi = CanvasApi;
+	        class CanvasAPISprite {
+	            constructor(image, subX, subY, subW, subH) {
+	                this.image = image;
+	                this.subX = subX;
+	                this.subY = subY;
+	                this.subW = subW;
+	                this.subH = subH;
+	            }
+	        }
+	        internal.CanvasAPISprite = CanvasAPISprite;
+	        class CanvasTiledApi {
+	            constructor(api, fontName, tileWidth, tileHeight) {
+	                this.api = api;
+	                this.fontName = fontName;
+	                this.tileWidth = tileWidth;
+	                this.tileHeight = tileHeight;
+	                this.font(this.fontName);
+	            }
+	            image(image, x, y) {
+	                this.api.image(image, x * this.tileWidth, y * this.tileHeight, this.tileWidth, this.tileHeight);
+	            }
+	            text(t, x, y) {
+	                const localY = y * this.tileHeight - (this.tileHeight * 0.25);
+	                this.api.text(t, x * this.tileWidth, localY);
+	            }
+	            rect(x, y) {
+	                this.api.rect(x * this.tileWidth, y * this.tileHeight, this.tileWidth, this.tileHeight);
+	            }
+	            color(c) {
+	                this.api.color(c);
+	            }
+	            font(name) {
+	                this.fontName = name;
+	                this.api.font(name, this.tileHeight);
+	            }
+	            async waitClick() {
+	                let [x, y] = await this.api.waitClick();
+	                x = Math.floor(x / this.tileWidth);
+	                y = Math.floor(y / this.tileHeight);
+	                return [x, y];
+	            }
+	        }
+	        internal.CanvasTiledApi = CanvasTiledApi;
+	    })(internal = Engine.internal || (Engine.internal = {}));
 	})(Engine || (Engine = {}));
 	var Engine;
 	(function (Engine) {
@@ -384,29 +1258,52 @@
 	})(Engine || (Engine = {}));
 	var el;
 	(function (el) {
-	    let internal;
-	    (function (internal) {
-	        class CanvasApi {
-	            constructor(canvas, ctx, dat) {
-	                this.canvas = canvas;
-	                this.ctx = ctx;
-	                this.dat = dat;
-	                this.clickHandlers = [];
-	            }
-	            waitClick() {
-	                return new Promise(ok => {
-	                    this.clickHandlers.push((x, y) => ok([x, y]));
+	    function adjuster(target, onMove) {
+	        let activated;
+	        let lastX = 0;
+	        let lastY = 0;
+	        el.print(target, el.canvas(30, 30, c => {
+	            c.canvas.style.marginLeft = "16px";
+	            c.canvas.style.marginRight = "16px";
+	            c.drawing(() => {
+	                c.color("darkgrey");
+	                c.rect(0, 0, 32, 32);
+	                let color = "red";
+	                if (activated)
+	                    color = "green";
+	                c.color(color);
+	                c.rect(10 + lastX, 10 + lastY, 10, 10);
+	            });
+	            c.canvas.addEventListener('click', () => {
+	                if (activated)
+	                    return;
+	                c.canvas.requestPointerLock();
+	                const mouseHandler = (e) => {
+	                    lastX = e.movementX;
+	                    lastY = e.movementY;
+	                    onMove(lastX, lastY);
+	                };
+	                const clickHandler = (e) => {
+	                    window.removeEventListener('click', clickHandler);
+	                    window.removeEventListener('pointermove', mouseHandler);
+	                    window.removeEventListener('pointerout', clickHandler);
+	                    document.exitPointerLock();
+	                    activated = false;
+	                };
+	                Engine.Timer.single(25, () => {
+	                    window.addEventListener('click', clickHandler);
+	                    window.addEventListener('pointermove', mouseHandler);
+	                    window.addEventListener('pointerout', clickHandler);
+	                    activated = true;
 	                });
-	            }
-	            _registerClick(x, y) {
-	                if (this.clickHandlers.length > 0) {
-	                    this.clickHandlers.forEach(c => c(x, y));
-	                    this.clickHandlers = [];
-	                }
-	            }
-	        }
-	        internal.CanvasApi = CanvasApi;
-	    })(internal = el.internal || (el.internal = {}));
+	                document.requestStorageAccess().catch(console.error);
+	            });
+	        }));
+	    }
+	    el.adjuster = adjuster;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
 	    function canvasOnclick(canvas, e, api) {
 	        const rect = canvas.getBoundingClientRect();
 	        const { clientX, clientY } = e;
@@ -419,7 +1316,7 @@
 	        const ctx = canvas.getContext('2d');
 	        if (!ctx)
 	            throw new Error("Can't take Canvas 2d context");
-	        const api = new internal.CanvasApi(canvas, ctx, {});
+	        const api = new Engine.internal.CanvasApi(canvas, ctx, {});
 	        canvas.width = w;
 	        canvas.height = h;
 	        canvas.reload = () => {
@@ -669,6 +1566,9 @@
 	        }
 	        else if (el.isRenderable(element)) {
 	            return el.span(span => {
+	                if (element.reload instanceof Function) {
+	                    element.reload = () => span.reload();
+	                }
 	                element.render(span);
 	            });
 	        }
@@ -720,6 +1620,41 @@
 	        }
 	    }
 	    el.remove = remove;
+	})(el || (el = {}));
+	var el;
+	(function (el) {
+	    function saveFile(mine, name, content) {
+	        var blob = new Blob([content], { type: mine });
+	        var url = URL.createObjectURL(blob);
+	        var link = document.createElement("a");
+	        link.href = url;
+	        link.download = name;
+	        document.body.appendChild(link);
+	        link.click();
+	        document.body.removeChild(link);
+	        URL.revokeObjectURL(url);
+	    }
+	    el.saveFile = saveFile;
+	    function loadFile() {
+	        return new Promise((resolve, reject) => {
+	            var input = document.createElement("input");
+	            input.type = "file";
+	            input.onchange = function (event) {
+	                const file = event.target.files[0];
+	                var reader = new FileReader();
+	                reader.onload = function (event) {
+	                    const content = event.target.result;
+	                    resolve(content);
+	                };
+	                reader.onerror = function () {
+	                    reject(new Error("Error reading file"));
+	                };
+	                reader.readAsText(file);
+	            };
+	            input.click();
+	        });
+	    }
+	    el.loadFile = loadFile;
 	})(el || (el = {}));
 	var el;
 	(function (el) {
@@ -822,6 +1757,63 @@
 	})(el || (el = {}));
 	var el;
 	(function (el) {
+	    function table(f) {
+	        const table = el.of("table");
+	        const api = new internal.ElementTableApi(table);
+	        api.nextRow();
+	        f(api);
+	        return table;
+	    }
+	    el.table = table;
+	    let internal;
+	    (function (internal) {
+	        class ElementTableApi {
+	            constructor(table) {
+	                this.table = table;
+	                this.lastRow = null;
+	                this._bordered = false;
+	                this._bold = false;
+	            }
+	            ;
+	            bold() {
+	                this._bold = true;
+	                return this;
+	            }
+	            bordered() {
+	                this._bordered = true;
+	                return this;
+	            }
+	            nextRow() {
+	                const tr = el.of("tr");
+	                el.print(this.table, tr);
+	                this.lastRow = tr;
+	                this._bold = false;
+	                return this;
+	            }
+	            value(value) {
+	                return this.span(s => {
+	                    s.print(value);
+	                });
+	            }
+	            span(func) {
+	                if (isNull(this.lastRow))
+	                    throw new Error("Please add at least one row for a table!");
+	                const td = el.of("td");
+	                if (this._bordered)
+	                    td.style.border = "1px solid";
+	                if (this._bold)
+	                    td.style.fontWeight = "bold";
+	                const span = el.span(func);
+	                el.print(td, span);
+	                el.print(this.lastRow, td);
+	                return this;
+	            }
+	        }
+	        internal.ElementTableApi = ElementTableApi;
+	    })(internal = el.internal || (el.internal = {}));
+	})(el || (el = {}));
+	var el;
+	(function (el) {
 	    class Span {
 	        constructor(span, reloadTime = 600) {
 	            this.span = span;
@@ -846,6 +1838,9 @@
 	        printCenterln(elem) {
 	            this.println(el.center(elem));
 	            return elem;
+	        }
+	        printf(t, ...args) {
+	            Engine.fmt.parsedPrint(this.span, t, args);
 	        }
 	        link(caption, cb) {
 	            return this.print(el.link(caption, cb));
@@ -1054,6 +2049,9 @@
 	            cb();
 	            await this.fadeIn(time);
 	        }
+	        table(f) {
+	            return this.print(el.table(f));
+	        }
 	    }
 	    el.Span = Span;
 	})(el || (el = {}));
@@ -1062,6 +2060,7 @@
 	    class PassageSpan extends el.Span {
 	        constructor(span, reloadTime = 600) {
 	            super(span, reloadTime);
+	            this._animation = null;
 	        }
 	        async reload(args) {
 	            Passage.reload(args);
@@ -1074,6 +2073,15 @@
 	        }
 	        arg(n) {
 	            return Passage.arg(n);
+	        }
+	        animation() {
+	            if (isNull(this._animation)) {
+	                this._animation = new Engine.Animate.TimeAnimation();
+	            }
+	            return this._animation;
+	        }
+	        timeline() {
+	            return new Engine.Animate.TimeLine(undefined, 0, [], false);
 	        }
 	    }
 	    el.PassageSpan = PassageSpan;
@@ -1295,6 +2303,23 @@
 	})(Engine || (Engine = {}));
 	var Engine;
 	(function (Engine) {
+	    const onloads = [];
+	    function addOnload(f) {
+	        onloads.push(f);
+	    }
+	    Engine.addOnload = addOnload;
+	    let internal;
+	    (function (internal) {
+	        async function startOnLoads() {
+	            for (let f of onloads) {
+	                await f();
+	            }
+	        }
+	        internal.startOnLoads = startOnLoads;
+	    })(internal = Engine.internal || (Engine.internal = {}));
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
 	    function dropdown(values_getter, onchange, defValue) {
 	        const selector = el.of("select");
 	        values_getter().forEach(p => {
@@ -1468,6 +2493,106 @@
 	        }
 	    }
 	    Engine.Effect = Effect;
+	})(Engine || (Engine = {}));
+	var Engine;
+	(function (Engine) {
+	    var fmt;
+	    (function (fmt) {
+	        const SIMPLE = 0;
+	        const BOLD = 1;
+	        const ITALIC = 2;
+	        function parsedPrint(target, text, args) {
+	            const span = el.span();
+	            for (let [line, type] of _parseTypes(text, args)) {
+	                let element = line;
+	                if (type === BOLD) {
+	                    element = _elem("b", line);
+	                }
+	                else if (type === ITALIC) {
+	                    element = _elem("i", line);
+	                }
+	                el.print(target, element);
+	            }
+	            el.println(target, span);
+	        }
+	        fmt.parsedPrint = parsedPrint;
+	        function _elem(tag, text) {
+	            return el.of(tag, b => {
+	                b.innerText = text;
+	            });
+	        }
+	        function _parseTypes(text, args) {
+	            let currentType = SIMPLE;
+	            const array = [];
+	            let sb = [];
+	            let variablePrinting = false;
+	            let variablePrintingSb = [];
+	            const collect = () => {
+	                if (sb.length > 0) {
+	                    array.push([sb.join(""), currentType]);
+	                    sb = [];
+	                }
+	            };
+	            for (let i = 0; i < text.length; i++) {
+	                const char = text.charAt(i);
+	                const charAndSecond = char + text.charAt(i + 1);
+	                if (charAndSecond === "$(") {
+	                    variablePrinting = true;
+	                    i += 1;
+	                    continue;
+	                }
+	                if (variablePrinting) {
+	                    if (char === ")") {
+	                        const varName = variablePrintingSb.join("");
+	                        collect();
+	                        const parsedInt = parseInt(varName);
+	                        let value = "";
+	                        if (!Number.isNaN(parsedInt)) {
+	                            value = args[parsedInt];
+	                        }
+	                        else {
+	                            value = V[varName];
+	                        }
+	                        if (isNull(value)) {
+	                            value = `[${varName}: null]`;
+	                        }
+	                        array.push([value, SIMPLE]);
+	                        variablePrinting = false;
+	                        variablePrintingSb = [];
+	                    }
+	                    else {
+	                        variablePrintingSb.push(char);
+	                    }
+	                    continue;
+	                }
+	                if (charAndSecond === "__") {
+	                    collect();
+	                    if (currentType === BOLD) {
+	                        currentType = SIMPLE;
+	                    }
+	                    else {
+	                        currentType = BOLD;
+	                    }
+	                    i += 1;
+	                    continue;
+	                }
+	                else if (charAndSecond === "//") {
+	                    collect();
+	                    if (currentType === ITALIC) {
+	                        currentType = SIMPLE;
+	                    }
+	                    else {
+	                        currentType = ITALIC;
+	                    }
+	                    i += 1;
+	                    continue;
+	                }
+	                sb.push(char);
+	            }
+	            collect();
+	            return array;
+	        }
+	    })(fmt = Engine.fmt || (Engine.fmt = {}));
 	})(Engine || (Engine = {}));
 	var Engine;
 	(function (Engine) {
@@ -2156,6 +3281,23 @@
 	})(Passage || (Passage = {}));
 	var Passage;
 	(function (Passage) {
+	    function ofCanvas(name, fn) {
+	        Passage.of(name, s => {
+	            let canvasApi = null;
+	            const w = Engine.app.clientWidth * 0.9;
+	            const h = window.innerHeight * 0.85;
+	            s.canvasln(w, h, C => {
+	                canvasApi = C;
+	            });
+	            if (isNull(canvasApi))
+	                throw new Error("Passage Canvas created without Canvas API");
+	            fn(canvasApi, s);
+	        });
+	    }
+	    Passage.ofCanvas = ofCanvas;
+	})(Passage || (Passage = {}));
+	var Passage;
+	(function (Passage) {
 	    let internal;
 	    (function (internal) {
 	        class ChoicePassageApi {
@@ -2354,6 +3496,97 @@
 	    }
 	    Passage.ofSequenceNoBack = ofSequenceNoBack;
 	})(Passage || (Passage = {}));
+	var Game;
+	(function (Game) {
+	    var text;
+	    (function (text_1) {
+	        const texts = {};
+	        function add(name, text) {
+	            let list = texts[name];
+	            if (isNull(list)) {
+	                list = [];
+	                texts[name] = list;
+	            }
+	            list.push(text);
+	        }
+	        text_1.add = add;
+	        function get(name) {
+	            const list = texts[name];
+	            if (isNull(list))
+	                return [];
+	            return list.map(it => it);
+	        }
+	        text_1.get = get;
+	        function list() {
+	            return Object.keys(texts);
+	        }
+	        text_1.list = list;
+	    })(text = Game.text || (Game.text = {}));
+	})(Game || (Game = {}));
+	var Util;
+	(function (Util) {
+	    class Collection {
+	        constructor(items) {
+	            this.list = [];
+	            if (!isNull(items)) {
+	                this.list = items.map(i => i);
+	            }
+	        }
+	        add(item) {
+	            this.list.push(item);
+	        }
+	        all() {
+	            return this.list.map(i => i);
+	        }
+	        len() {
+	            return this.list.length;
+	        }
+	        count(f) {
+	            let num = 0;
+	            for (let item of this.list) {
+	                if (f(item))
+	                    num += 1;
+	            }
+	            return num;
+	        }
+	        removeFirst(f) {
+	            for (let i = 0; i < this.list.length; i++) {
+	                const item = this.list[i];
+	                if (f(item)) {
+	                    this.list.splice(i, 1);
+	                    return true;
+	                }
+	            }
+	            return false;
+	        }
+	        removeAll(f) {
+	            const startLen = this.list.length;
+	            this.list = this.list.filter(item => !f(item));
+	            return startLen - this.list.length;
+	        }
+	        forEach(f) {
+	            this.list.forEach(f);
+	        }
+	        page(n, pageSize = 10) {
+	            n -= 1;
+	            if (n < 0)
+	                n = 0;
+	            const id = n * pageSize;
+	            const lastId = id + pageSize;
+	            return this.all().filter((_, i) => i >= id && i < lastId);
+	        }
+	        maxPage(pageSize = 10) {
+	            return Math.ceil(this.list.length / pageSize);
+	        }
+	        forEachPage(pageSize, f) {
+	            const max = this.maxPage();
+	            for (let i = 1; i <= max; i++) {
+	                f(i, this.page(i, pageSize));
+	            }
+	        }
+	    }
+	    Util.Collection = Collection;
+	})(Util || (Util = {}));
 	var Util;
 	(function (Util) {
 	    function lineInfo(prev = false) {
@@ -2393,6 +3626,47 @@
 	})(Util || (Util = {}));
 	var Util;
 	(function (Util) {
+	    class Pageable {
+	        constructor(elements, renderer, page_number = 1, pageSize = 5) {
+	            this.elements = elements;
+	            this.renderer = renderer;
+	            this.page_number = page_number;
+	            this.pageSize = pageSize;
+	        }
+	        page(n) {
+	            const page = n - 1;
+	            const start = this.pageSize * page;
+	            const end = start + this.pageSize;
+	            return this.elements.slice(start, end);
+	        }
+	        maxpage() {
+	            return Math.ceil(this.elements.length / this.pageSize);
+	        }
+	        render(s) {
+	            __drawPanel(s, this.page_number, this.maxpage(), n => this.page_number = n);
+	            for (let elem of this.page(this.page_number)) {
+	                s.print(this.renderer(elem));
+	                s.print(el.hr());
+	            }
+	        }
+	    }
+	    Util.Pageable = Pageable;
+	    function __drawPanel(s, page, max, changePage) {
+	        const changer = (cap, n) => s.rebutton(cap, () => changePage(n));
+	        if (page > 1) {
+	            changer("<<<", 1);
+	            changer("<", page - 1);
+	        }
+	        el.print(s, `[ ${page} / ${max} ]`);
+	        if (page < max) {
+	            changer(">", page + 1);
+	            changer(">>>", max);
+	        }
+	        el.print(s, el.hr());
+	    }
+	})(Util || (Util = {}));
+	var Util;
+	(function (Util) {
 	    function declick(span) {
 	        if (!(span instanceof HTMLElement))
 	            return;
@@ -2402,6 +3676,28 @@
 	        }
 	    }
 	    Util.declick = declick;
+	})(Util || (Util = {}));
+	var Util;
+	(function (Util) {
+	    function copy(content) {
+	        navigator.clipboard.writeText(content);
+	    }
+	    Util.copy = copy;
+	})(Util || (Util = {}));
+	var Util;
+	(function (Util) {
+	    function hash(s) {
+	        let hash = 0;
+	        if (s.length == 0)
+	            return hash;
+	        for (let i = 0; i < s.length; i++) {
+	            const char = s.charCodeAt(i);
+	            hash = ((hash << 5) - hash) + char;
+	            hash = hash & hash;
+	        }
+	        return hash;
+	    }
+	    Util.hash = hash;
 	})(Util || (Util = {}));
 	var Util;
 	(function (Util) {
@@ -2464,47 +3760,6 @@
 	        return list[id];
 	    }
 	    Util.randChoose = randChoose;
-	})(Util || (Util = {}));
-	var Util;
-	(function (Util) {
-	    class Pageable {
-	        constructor(elements, renderer, page_number = 1, pageSize = 5) {
-	            this.elements = elements;
-	            this.renderer = renderer;
-	            this.page_number = page_number;
-	            this.pageSize = pageSize;
-	        }
-	        page(n) {
-	            const page = n - 1;
-	            const start = this.pageSize * page;
-	            const end = start + this.pageSize;
-	            return this.elements.slice(start, end);
-	        }
-	        maxpage() {
-	            return Math.ceil(this.elements.length / this.pageSize);
-	        }
-	        render(s) {
-	            __drawPanel(s, this.page_number, this.maxpage(), n => this.page_number = n);
-	            for (let elem of this.page(this.page_number)) {
-	                s.print(this.renderer(elem));
-	                s.print(el.hr());
-	            }
-	        }
-	    }
-	    Util.Pageable = Pageable;
-	    function __drawPanel(s, page, max, changePage) {
-	        const changer = (cap, n) => s.rebutton(cap, () => changePage(n));
-	        if (page > 1) {
-	            changer("<<<", 1);
-	            changer("<", page - 1);
-	        }
-	        el.print(s, `[ ${page} / ${max} ]`);
-	        if (page < max) {
-	            changer(">", page + 1);
-	            changer(">>>", max);
-	        }
-	        el.print(s, el.hr());
-	    }
 	})(Util || (Util = {}));
 	var Engine;
 	(function (Engine) {
@@ -2723,7 +3978,7 @@
 	        }
 	    }
 	    Releases.releases = [
-	        ["2.3.0", "https://ouo.io/ywh4fmo"],
+	        ["2.4.0", "https://ouo.io/JwJHflX"],
 	    ];
 	    monna.Releases = Releases;
 	})(monna || (monna = {}));
