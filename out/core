@@ -1,5 +1,4 @@
 (function () {
-	window.isDebugMode = true;
 	function isNull(e) {
 	    return e === null || e === undefined;
 	}
@@ -11,6 +10,7 @@
 	(function (Engine) {
 	})(Engine || (Engine = {}));
 	window.addEventListener("load", async function () {
+	    Game.dto(Engine.Config.dto.namespace, Engine.Config.dto.path);
 	    Engine.Variables.load();
 	    Engine.app = document.getElementById("app");
 	    if (window['isDebugMode'] === true)
@@ -1254,6 +1254,10 @@
 	    (function (Config) {
 	        Config.autoSaveOnGoto = false;
 	        Config.autoSaveTimer = false;
+	        Config.dto = {
+	            namespace: null,
+	            path: "",
+	        };
 	    })(Config = Engine.Config || (Engine.Config = {}));
 	})(Engine || (Engine = {}));
 	var el;
@@ -2728,6 +2732,8 @@
 	var Game;
 	(function (Game) {
 	    function dto(obj, path) {
+	        if (isNull(obj))
+	            return;
 	        for (let k of Object.keys(obj)) {
 	            const subObject = obj[k];
 	            const typ = typeof (subObject);
@@ -3978,10 +3984,15 @@
 	        }
 	    }
 	    Releases.releases = [
-	        ["2.4.0", "https://ouo.io/JwJHflX"],
+	        ["2.4.1", "https://ouo.io/8KPcR8"],
 	    ];
 	    monna.Releases = Releases;
 	})(monna || (monna = {}));
+	var StoryConfig;
+	(function (StoryConfig) {
+	    Engine.Config.autoSaveOnGoto = true;
+	    Engine.Config.autoSaveTimer = true;
+	})(StoryConfig || (StoryConfig = {}));
 	var monna;
 	(function (monna) {
 	    class StoryTeller {
