@@ -23,7 +23,7 @@
         ]
     },
     "include": [
-        "E:\\MonnaHisteaEngine\\CORE/src/**/*.ts",
+        "E:\\DEV\\MonnaHisteaEngine\\CORE/src/**/*.ts",
         "./src/**/*.ts",
         "./passages/**/*.ts"
     ]
