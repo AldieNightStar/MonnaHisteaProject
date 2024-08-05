@@ -10,7 +10,7 @@
 * `passages` - Folder where are all your Passage `ts` scripts that has `Passage.of` function calls
 * `out` - Output folder where all your resources and main file `index.html`. Can be hosted
 
-## First Passage (JavaScript only)
+## First Passage
 * Create story file (for ex:`story.ts`) in `passages` folder
 * First passage is always `Start` then you can move between them by `Passage.goto` or passage links
 ```ts
@@ -87,9 +87,3 @@ npm install -g typescript
 	* [Create Custom Generator](doc/CodeGen_CustomGen.md)
 * Internal `+Generators`
 	* [Builder Generator `+builder`](doc/CodeGen_Builder.md)
-
-## Dev
-* Git clone it to your local machine
-* Open in `IDEA`
-* Create new `RUN` config with home folder as `TEST_PROJECT` and argument `auto`
-* `./gradlew cli` for creating `cli` JAR and script
