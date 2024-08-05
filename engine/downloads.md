@@ -7,4 +7,4 @@
 ![Logo](./logo.webp)
 
 ## Supported versions
-[Monna Histea 2.6.1](https://ouo.io/UisIv2)
+[Monna Histea 2.6.2](https://ouo.io/ZBkkfD)
