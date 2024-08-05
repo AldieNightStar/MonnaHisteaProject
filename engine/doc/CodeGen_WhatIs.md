@@ -38,3 +38,18 @@ namespace TEST {
 	}
 }
 ```
+
+## Multiline Generator Comment
+* Sometimes you need more space for a comment
+* For example, you want to generate builder with 20 fields
+* Just add ` \ ` (Backslash) in the end, so it would tell Engine to continue in the second comment
+```ts
+// gen: node generate.js something1 something2 something3 \
+//      something4 something 5
+```
+* Another example
+```ts
+// gen: +builder User \
+//    name:string   age:number \
+//    items:Item[]  buffs:Buff[]
+```
