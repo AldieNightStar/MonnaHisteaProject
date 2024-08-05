@@ -85,6 +85,8 @@ npm install -g typescript
 	* [Code Generator Doc](doc/CodeGen_WhatIs.md)
 	* [Code Generator Arguments](doc/CodeGen_Args.md)
 	* [Create Custom Generator](doc/CodeGen_CustomGen.md)
+* Internal `+Generators`
+	* [Builder Generator `+builder`](doc/CodeGen_Builder.md)
 
 ## Dev
 * Git clone it to your local machine
