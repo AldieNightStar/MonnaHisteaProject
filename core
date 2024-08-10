@@ -1988,6 +1988,31 @@
     var Passage;
     (function (Passage) {
         const passages = {};
+        class CreatedPassageRef {
+            constructor(_name) {
+                this._name = _name;
+            }
+            name() {
+                return this._name;
+            }
+            goto(args) {
+                return Passage.goto(this._name, args);
+            }
+            wrap(newFunc) {
+                const oldFunc = passages[this._name];
+                if (isNull(oldFunc)) {
+                    throw new Error("Nothing to wrap for Passages: " + this._name);
+                }
+                passages[this._name] = s => {
+                    newFunc(s, () => oldFunc(s));
+                };
+                return this;
+            }
+            wrapper() {
+                return new Passage.PassageWrapperBuilder(this);
+            }
+        }
+        Passage.CreatedPassageRef = CreatedPassageRef;
         function _setPassageArgs(args) {
             V.passage_args = args;
         }
@@ -2068,13 +2093,14 @@
                 throw new Error(message);
             }
             passages[name] = f;
+            return new CreatedPassageRef(name);
         }
         Passage.of = of;
     })(Passage || (Passage = {}));
     var Passage;
     (function (Passage) {
         function ofCanvas(name, fn) {
-            Passage.of(name, s => {
+            return Passage.of(name, s => {
                 let canvasApi = null;
                 const w = Engine.app.clientWidth * 0.9;
                 const h = window.innerHeight * 0.85;
@@ -2135,7 +2161,7 @@
             internal.ChoicePassageApi = ChoicePassageApi;
         })(internal = Passage.internal || (Passage.internal = {}));
         function ofChoice(name, cb) {
-            Passage.of(name, s => {
+            return Passage.of(name, s => {
                 const c = new internal.ChoicePassageApi(name, () => s.args());
                 cb(c);
                 const { caption, variants, image, timer, className } = c.extractData();
@@ -2249,7 +2275,7 @@
             internal.LinearPassageBuilderApi = LinearPassageBuilderApi;
         })(internal = Passage.internal || (Passage.internal = {}));
         function ofLinear(name, cb) {
-            Passage.of(name, s => {
+            return Passage.of(name, s => {
                 let [pos] = s.args();
                 if (isNull(pos))
                     pos = 0;
@@ -2271,7 +2297,7 @@
     var Passage;
     (function (Passage) {
         function sequencePassageLogic(name, cb, isBack) {
-            Passage.of(name, s => {
+            return Passage.of(name, s => {
                 const adder = el.seq("_seq:" + name);
                 cb(adder);
                 const seq = adder.done();
@@ -2280,13 +2306,44 @@
             });
         }
         function ofSequence(name, cb) {
-            sequencePassageLogic(name, cb, true);
+            return sequencePassageLogic(name, cb, true);
         }
         Passage.ofSequence = ofSequence;
         function ofSequenceNoBack(name, cb) {
-            sequencePassageLogic(name, cb, false);
+            return sequencePassageLogic(name, cb, false);
         }
         Passage.ofSequenceNoBack = ofSequenceNoBack;
+    })(Passage || (Passage = {}));
+    var Passage;
+    (function (Passage) {
+        class PassageWrapperBuilder {
+            constructor(ref) {
+                this.ref = ref;
+                this.befores = [];
+                this.afters = [];
+            }
+            before(f) {
+                this.befores.push(f);
+                return this;
+            }
+            after(f) {
+                this.afters.push(f);
+                return this;
+            }
+            done() {
+                this.ref.wrap(async (s, old) => {
+                    for (let f of this.befores) {
+                        await f(s);
+                    }
+                    await old();
+                    for (let f of this.afters) {
+                        await f(s);
+                    }
+                });
+                return this.ref;
+            }
+        }
+        Passage.PassageWrapperBuilder = PassageWrapperBuilder;
     })(Passage || (Passage = {}));
     var Util;
     (function (Util) {
@@ -2909,7 +2966,7 @@
         hax.PrettyLinkPrinter = PrettyLinkPrinter;
     })(hax || (hax = {}));
     hax.linkPassage("Engine", "Download Monna Histea Engine", "fireflies.jpg", [
-        ["Monna Histea 2.6.2", "https://ouo.io/ZBkkfD"]
+        ["Monna Histea 2.7.0", "https://ouo.io/ChcQ7Z"]
     ]);
     hax.passage("Start", "Monna Histea", "islands.jpg", s => {
         const p = new hax.PrettyLinkPrinter();
