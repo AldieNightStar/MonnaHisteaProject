@@ -1,0 +1,2963 @@
+(function () {
+    function isNull(e) {
+        return e === null || e === undefined;
+    }
+    const V = {};
+    function bind(f, src) {
+        return f.bind(src);
+    }
+    var Engine;
+    (function (Engine) {
+    })(Engine || (Engine = {}));
+    window.addEventListener("load", async function () {
+        Game.dto(Engine.Config.dto.namespace, Engine.Config.dto.path);
+        if (Engine.Config.passageInUrlAnchor) {
+            Engine.Config.anchorVariables.push("passage");
+        }
+        Engine.Variables.load();
+        Engine.app = document.getElementById("app");
+        if (window['isDebugMode'] === true)
+            Engine.Debug.activatePanel();
+        Engine.Variables.saveWithTimer();
+        Engine.Audio.restoreMusic();
+        Engine.Audio.savingMusicTimer();
+        Engine.Pos.restore();
+        Engine.Bg.restore();
+        Engine.Timer.loadNovelStart();
+        await Engine.internal.startOnLoads();
+        Passage._reloadOnStart();
+    });
+    var Engine;
+    (function (Engine) {
+        var internal;
+        (function (internal) {
+            class CanvasApi {
+                constructor(canvas, ctx, dat) {
+                    this.canvas = canvas;
+                    this.ctx = ctx;
+                    this.dat = dat;
+                    this.clickHandlers = [];
+                    this.lastFontSize = 0;
+                    this.lastFontName = "System";
+                }
+                waitClick() {
+                    return new Promise(ok => {
+                        this.clickHandlers.push((x, y) => ok([x, y]));
+                    });
+                }
+                _registerClick(x, y) {
+                    if (this.clickHandlers.length > 0) {
+                        this.clickHandlers.forEach(c => c(x, y));
+                        this.clickHandlers = [];
+                    }
+                }
+                rect(x, y, w, h) {
+                    this.ctx.fillRect(x, y, w, h);
+                }
+                rectRotated(x, y, w, h, degree, ax, ay) {
+                    this.rotated(degree, x + ax, y + ay, () => this.rect(-ax, -ay, w, h));
+                }
+                text(t, x, y) {
+                    this.ctx.fillText(t, x, y + this.lastFontSize);
+                }
+                color(c) {
+                    this.ctx.fillStyle = c;
+                }
+                font(name, size = 32) {
+                    this.ctx.font = size + "px " + name;
+                    this.lastFontName = name;
+                    this.lastFontSize = size;
+                }
+                image(img, x, y, w, h) {
+                    this.ctx.imageSmoothingEnabled = false;
+                    if (img instanceof HTMLImageElement) {
+                        this.ctx.drawImage(img, x, y, w, h);
+                    }
+                    else if (img instanceof CanvasAPISprite) {
+                        this.ctx.drawImage(img.image, img.subX, img.subY, img.subW, img.subH, x, y, w, h);
+                    }
+                }
+                imageRotated(img, x, y, w, h, degree, ax, ay) {
+                    this.rotated(degree, x + ax, y + ay, () => { this.image(img, -ax, -ay, w, h); });
+                }
+                spriteOf(img, x, y, w, h) {
+                    return new CanvasAPISprite(img, x, y, w, h);
+                }
+                tileSet(img, tileWidth, tileHeight) {
+                    let sprites = [];
+                    if (img instanceof HTMLImageElement) {
+                        const tileXCount = Math.floor(img.naturalWidth / tileWidth);
+                        const tileYCount = Math.floor(img.naturalWidth / tileWidth);
+                        for (let y = 0; y < tileYCount; y++) {
+                            for (let x = 0; x < tileXCount; x++) {
+                                sprites.push(new CanvasAPISprite(img, x * tileWidth, y * tileHeight, tileWidth, tileHeight));
+                            }
+                        }
+                    }
+                    return sprites;
+                }
+                clear() {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                }
+                size() {
+                    return [this.canvas.width, this.canvas.height];
+                }
+                drawing(f) {
+                    const timer = Engine.Timer.interval(16, () => {
+                        if (!this.canvas.isConnected) {
+                            timer.stop();
+                            return;
+                        }
+                        this.clear();
+                        f();
+                    });
+                }
+                rotated(deg, x, y, fn) {
+                    this.ctx.save();
+                    this.ctx.translate(x, y);
+                    this.ctx.rotate(deg * Math.PI / 180);
+                    fn();
+                    this.ctx.translate(-x, -y);
+                    this.ctx.restore();
+                }
+                opacity(n) {
+                    this.ctx.globalAlpha = n;
+                }
+                tiled(w, h) {
+                    return new CanvasTiledApi(this, this.lastFontName, w, h);
+                }
+            }
+            internal.CanvasApi = CanvasApi;
+            class CanvasAPISprite {
+                constructor(image, subX, subY, subW, subH) {
+                    this.image = image;
+                    this.subX = subX;
+                    this.subY = subY;
+                    this.subW = subW;
+                    this.subH = subH;
+                }
+            }
+            internal.CanvasAPISprite = CanvasAPISprite;
+            class CanvasTiledApi {
+                constructor(api, fontName, tileWidth, tileHeight) {
+                    this.api = api;
+                    this.fontName = fontName;
+                    this.tileWidth = tileWidth;
+                    this.tileHeight = tileHeight;
+                    this.font(this.fontName);
+                }
+                image(image, x, y) {
+                    this.api.image(image, x * this.tileWidth, y * this.tileHeight, this.tileWidth, this.tileHeight);
+                }
+                text(t, x, y) {
+                    const localY = y * this.tileHeight - (this.tileHeight * 0.25);
+                    this.api.text(t, x * this.tileWidth, localY);
+                }
+                rect(x, y) {
+                    this.api.rect(x * this.tileWidth, y * this.tileHeight, this.tileWidth, this.tileHeight);
+                }
+                color(c) {
+                    this.api.color(c);
+                }
+                font(name) {
+                    this.fontName = name;
+                    this.api.font(name, this.tileHeight);
+                }
+                async waitClick() {
+                    let [x, y] = await this.api.waitClick();
+                    x = Math.floor(x / this.tileWidth);
+                    y = Math.floor(y / this.tileHeight);
+                    return [x, y];
+                }
+            }
+            internal.CanvasTiledApi = CanvasTiledApi;
+        })(internal = Engine.internal || (Engine.internal = {}));
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        var Config;
+        (function (Config) {
+            Config.autoSaveOnGoto = false;
+            Config.autoSaveTimer = false;
+            Config.dto = {
+                namespace: null,
+                path: "",
+            };
+            Config.passageInUrlAnchor = false;
+            Config.anchorVariables = [];
+        })(Config = Engine.Config || (Engine.Config = {}));
+    })(Engine || (Engine = {}));
+    var el;
+    (function (el) {
+        function adjuster(target, onMove) {
+            let activated;
+            let lastX = 0;
+            let lastY = 0;
+            el.print(target, el.canvas(30, 30, c => {
+                c.canvas.style.marginLeft = "16px";
+                c.canvas.style.marginRight = "16px";
+                c.drawing(() => {
+                    c.color("darkgrey");
+                    c.rect(0, 0, 32, 32);
+                    let color = "red";
+                    if (activated)
+                        color = "green";
+                    c.color(color);
+                    c.rect(10 + lastX, 10 + lastY, 10, 10);
+                });
+                c.canvas.addEventListener('click', () => {
+                    if (activated)
+                        return;
+                    c.canvas.requestPointerLock();
+                    const mouseHandler = (e) => {
+                        lastX = e.movementX;
+                        lastY = e.movementY;
+                        onMove(lastX, lastY);
+                    };
+                    const clickHandler = (e) => {
+                        window.removeEventListener('click', clickHandler);
+                        window.removeEventListener('pointermove', mouseHandler);
+                        window.removeEventListener('pointerout', clickHandler);
+                        document.exitPointerLock();
+                        activated = false;
+                    };
+                    Engine.Timer.single(25, () => {
+                        window.addEventListener('click', clickHandler);
+                        window.addEventListener('pointermove', mouseHandler);
+                        window.addEventListener('pointerout', clickHandler);
+                        activated = true;
+                    });
+                    document.requestStorageAccess().catch(console.error);
+                });
+            }));
+        }
+        el.adjuster = adjuster;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function canvasOnclick(canvas, e, api) {
+            const rect = canvas.getBoundingClientRect();
+            const { clientX, clientY } = e;
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            api._registerClick(x, y);
+        }
+        function canvas(w, h, cb) {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext('2d');
+            if (!ctx)
+                throw new Error("Can't take Canvas 2d context");
+            const api = new Engine.internal.CanvasApi(canvas, ctx, {});
+            canvas.width = w;
+            canvas.height = h;
+            canvas.reload = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (cb)
+                    cb(api);
+            };
+            canvas.onclick = (e) => {
+                canvasOnclick(canvas, e, api);
+            };
+            canvas.reload();
+            return canvas;
+        }
+        el.canvas = canvas;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function center(elem) {
+            return el.of('center', c => {
+                el.print(c, elem);
+            });
+        }
+        el.center = center;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function of(tag, cb) {
+            let elem = document.createElement(tag);
+            if (cb)
+                cb(elem);
+            elem.reload = async () => {
+                await el.clear(elem);
+                if (cb)
+                    await cb(elem);
+            };
+            elem.ID = (id) => {
+                elem.id = id;
+                return elem;
+            };
+            elem.CLASS = (name) => {
+                elem.className = name;
+                return elem;
+            };
+            return elem;
+        }
+        el.of = of;
+        ;
+        function span(cb) {
+            return el.of("span", s => {
+                if (cb instanceof Function)
+                    cb(new el.Span(s));
+            });
+        }
+        el.span = span;
+        function button(text, onclick, cb) {
+            return el.of("button", b => {
+                b.innerText = text;
+                b.onclick = onclick;
+                if (cb)
+                    cb(b);
+            });
+        }
+        el.button = button;
+        function rebutton(reloadable, text, onclick, cb) {
+            return el.button(text, async () => {
+                await onclick();
+                await el.reload(reloadable);
+            }, cb);
+        }
+        el.rebutton = rebutton;
+        function link(text, onclick, cb) {
+            return el.of("a", l => {
+                l.innerText = text;
+                l.onclick = onclick;
+                if (cb)
+                    cb(l);
+            });
+        }
+        el.link = link;
+        function relink(reloadable, text, onclick, cb) {
+            return el.link(text, async () => {
+                await onclick();
+                await el.reload(reloadable);
+            }, cb);
+        }
+        el.relink = relink;
+        function passlink(text, passage, args, onclick, cb) {
+            return el.link(text, () => {
+                if (onclick)
+                    onclick();
+                Passage.goto(passage, args);
+            }, cb);
+        }
+        el.passlink = passlink;
+        function passCleanLink(text, passage, args, onclick, cb) {
+            return el.passlink(text, passage, args, () => {
+                if (onclick)
+                    onclick();
+                Engine.Variables.clean();
+            }, cb);
+        }
+        el.passCleanLink = passCleanLink;
+        function img(src, w, h, cb) {
+            return el.of("img", (i) => {
+                if (i instanceof HTMLImageElement) {
+                    i;
+                    i.src = src;
+                    i.style.width = "" + w;
+                    i.style.height = "" + h;
+                    i.style.maxWidth = "100%";
+                    i.style.maxHeight = "100vh";
+                    i.wait = () => new Promise((ok, fail) => {
+                        i.onload = () => {
+                            ok(i);
+                        };
+                        i.onerror = (e) => {
+                            fail(e);
+                        };
+                    });
+                    if (cb)
+                        cb(i);
+                }
+                else {
+                    throw new Error("Image element is not of correct type: " + i);
+                }
+            });
+        }
+        el.img = img;
+        function br() { return el.of("br"); }
+        el.br = br;
+        function hr() { return el.of("hr"); }
+        el.hr = hr;
+        function typing(text, ms, onChar, onDone) {
+            return el.span(s => {
+                let pos = 0;
+                let timer = Engine.Timer.interval(ms, async () => {
+                    if (pos < text.length) {
+                        const char = text[pos];
+                        el.print(s, char);
+                        pos += 1;
+                        if (onChar)
+                            await onChar(char);
+                    }
+                    else {
+                        timer.stop();
+                        if (onDone)
+                            onDone();
+                    }
+                });
+            });
+        }
+        el.typing = typing;
+        function title(caption, cb) {
+            return el.of("h1", h => {
+                h.innerText = caption;
+                if (cb)
+                    cb(h);
+            });
+        }
+        el.title = title;
+        function timerLink(seconds, text, cb) {
+            return el.of("a", a => {
+                const timerIcon = (seconds <= 3) ? "⛔" : "⏲️";
+                a.innerText = text + " [" + timerIcon + " " + seconds + "]";
+                const timer = Engine.Timer.single(1000, () => {
+                    if (!a.isConnected)
+                        return;
+                    seconds -= 1;
+                    if (seconds > 0) {
+                        el.reload(a);
+                    }
+                    else {
+                        cb();
+                        a.onclick = null;
+                        a.innerText = text;
+                    }
+                });
+                a.onclick = () => {
+                    cb();
+                    a.innerText = text;
+                    timer.stop();
+                };
+            });
+        }
+        el.timerLink = timerLink;
+        function choose(variants, callback) {
+            return el.span(s => {
+                const s_chooser = s;
+                if (isNull(s_chooser.chosen)) {
+                    for (let [caption, value] of variants) {
+                        el.println(s, el.relink(s, " " + caption + " ", () => {
+                            s_chooser.chosen = true;
+                            callback(value);
+                        }));
+                    }
+                }
+            });
+        }
+        el.choose = choose;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function input(value, placeHolder) {
+            return el.of("input", inp => {
+                inp.value = value;
+                if (!isNull(placeHolder)) {
+                    inp.ariaPlaceholder = placeHolder;
+                }
+            });
+        }
+        el.input = input;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function isRenderable(obj) {
+            return (typeof obj === "object" && obj.render instanceof Function);
+        }
+        el.isRenderable = isRenderable;
+        function isReloadable(obj) {
+            return (typeof obj === "object" && obj.reload instanceof Function);
+        }
+        el.isReloadable = isReloadable;
+        function isAppendable(obj) {
+            return (typeof obj === "object" && obj.appendChild instanceof Function);
+        }
+        el.isAppendable = isAppendable;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function print(target, src) {
+            if (el.isAppendable(target)) {
+                let wrapped = el.wrap(src);
+                target.appendChild(wrapped);
+                return wrapped;
+            }
+            else {
+                throw new Error("el.print: Target should be el.IAppendable: " + target);
+            }
+        }
+        el.print = print;
+        ;
+        function println(target, src) {
+            let wrapped = el.print(target, src);
+            el.print(target, el.br());
+            return wrapped;
+        }
+        el.println = println;
+        ;
+        function printAll(target, ...elements) {
+            for (let element of elements) {
+                if (isNull(element))
+                    continue;
+                el.println(target, element);
+            }
+            el.print(target, el.br());
+        }
+        el.printAll = printAll;
+        function wrap(element) {
+            if (element instanceof HTMLElement) {
+                return element;
+            }
+            else if (element instanceof Promise) {
+                return el.span(s => {
+                    s.print("⌛⌛⌛");
+                    element.then(loadedElement => {
+                        s.clear();
+                        s.print(loadedElement);
+                    }).catch(error => {
+                        s.clear();
+                        console.error(error);
+                        if (error.message) {
+                            s.print("[⛔ERR: " + error.message + "]");
+                        }
+                        else {
+                            s.print("[⛔ERR: " + error + "]");
+                        }
+                    });
+                });
+            }
+            else if (Array.isArray(element)) {
+                return el.span(span => {
+                    element.forEach(subElem => el.print(span, el.wrap(subElem)));
+                });
+            }
+            else if (el.isRenderable(element)) {
+                return el.span(span => {
+                    if (element.reload instanceof Function) {
+                        element.reload = () => span.reload();
+                    }
+                    element.render(span);
+                });
+            }
+            return el.span(s => {
+                s.span.innerText = "" + element;
+            });
+        }
+        el.wrap = wrap;
+        ;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        async function reload(target) {
+            if (el.isReloadable(target)) {
+                await target.reload();
+            }
+        }
+        el.reload = reload;
+        async function reloadFade(target, ms = 600) {
+            if (target instanceof HTMLElement && el.isReloadable(target)) {
+                Util.declick(target);
+                await Engine.Effect.fadeChange(target, ms, async () => {
+                    await el.reload(target);
+                });
+            }
+        }
+        el.reloadFade = reloadFade;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function clear(target) {
+            if (target instanceof HTMLElement) {
+                target.innerHTML = "";
+            }
+            else {
+                throw new Error("Can't el.clear(...) as element is not HTMLElement: " + target);
+            }
+        }
+        el.clear = clear;
+        function remove(target) {
+            if (target instanceof HTMLElement) {
+                const parentElem = target.parentElement;
+                if (parentElem !== null) {
+                    parentElem.removeChild(target);
+                }
+            }
+            else {
+                throw new Error("Can't el.remove(...) as element is not HTMLElement: " + target);
+            }
+        }
+        el.remove = remove;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function saveFile(mine, name, content) {
+            var blob = new Blob([content], { type: mine });
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement("a");
+            link.href = url;
+            link.download = name;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+        el.saveFile = saveFile;
+        function loadFile() {
+            return new Promise((resolve, reject) => {
+                var input = document.createElement("input");
+                input.type = "file";
+                input.onchange = function (event) {
+                    const file = event.target.files[0];
+                    var reader = new FileReader();
+                    reader.onload = function (event) {
+                        const content = event.target.result;
+                        resolve(content);
+                    };
+                    reader.onerror = function () {
+                        reject(new Error("Error reading file"));
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            });
+        }
+        el.loadFile = loadFile;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function select(s) {
+            return document.querySelectorAll(s);
+        }
+        el.select = select;
+        function selectOne(s) { return document.querySelector(s); }
+        el.selectOne = selectOne;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        class SequenceAdder {
+            constructor(seq, add, varName) {
+                this.seq = seq;
+                this.add = add;
+                this.varName = varName;
+            }
+            text(t) {
+                this.add((s) => s.print(t));
+                return this;
+            }
+            img(src, text) {
+                this.add((s) => {
+                    s.printCenterln(el.img(src));
+                    if (!isNull(text))
+                        s.print(text);
+                });
+                return this;
+            }
+            title(title, text) {
+                this.add((s) => {
+                    s.title(title, true);
+                    if (!isNull(text))
+                        s.print(text);
+                });
+                return this;
+            }
+            action(cb) {
+                this.add(cb);
+                return this;
+            }
+            pass(text, passage, args, cb) {
+                this.add(s => s.link(text, () => {
+                    if (cb instanceof Function) {
+                        cb();
+                    }
+                    delete V[this.varName];
+                    Passage.goto(passage, args);
+                }));
+                return this;
+            }
+            done() {
+                return this.seq;
+            }
+        }
+        el.SequenceAdder = SequenceAdder;
+        class Sequence {
+            constructor(varName) {
+                this.varName = varName;
+                this.prevCaption = "<< Previous";
+                this.nextCaption = "Next >>";
+                this.allowPrev = true;
+                this.adder = new SequenceAdder(this, cb => this.funcs.push(cb), this.varName);
+                this.funcs = [];
+            }
+            setup(allowPrev, next, prev = "") {
+                this.allowPrev = allowPrev;
+                this.nextCaption = next;
+                this.prevCaption = prev;
+                return this;
+            }
+            render(s) {
+                const id = Game.v(this.varName, 0).get();
+                const isLast = id === this.funcs.length - 1;
+                const isFirst = id === 0;
+                const page = id + 1;
+                const maxPage = this.funcs.length;
+                if (id < this.funcs.length) {
+                    const func = this.funcs[id];
+                    s.println(el.span(subspan => func(subspan)));
+                    if (this.allowPrev && !isFirst) {
+                        s.rebutton(this.prevCaption, () => V[this.varName] = id - 1);
+                    }
+                    s.print(`${page} / ${maxPage}`);
+                    if (!isLast) {
+                        s.rebutton(this.nextCaption, () => V[this.varName] = id + 1);
+                    }
+                }
+            }
+            then() {
+                return this.adder;
+            }
+        }
+        el.Sequence = Sequence;
+        function seq(varName) {
+            return new Sequence(varName).then();
+        }
+        el.seq = seq;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        function table(f) {
+            const table = el.of("table");
+            const api = new internal.ElementTableApi(table);
+            api.nextRow();
+            f(api);
+            return table;
+        }
+        el.table = table;
+        let internal;
+        (function (internal) {
+            class ElementTableApi {
+                constructor(table) {
+                    this.table = table;
+                    this.lastRow = null;
+                    this._bordered = false;
+                    this._bold = false;
+                }
+                ;
+                bold() {
+                    this._bold = true;
+                    return this;
+                }
+                bordered() {
+                    this._bordered = true;
+                    return this;
+                }
+                nextRow() {
+                    const tr = el.of("tr");
+                    el.print(this.table, tr);
+                    this.lastRow = tr;
+                    this._bold = false;
+                    return this;
+                }
+                value(value) {
+                    return this.span(s => {
+                        s.print(value);
+                    });
+                }
+                span(func) {
+                    if (isNull(this.lastRow))
+                        throw new Error("Please add at least one row for a table!");
+                    const td = el.of("td");
+                    if (this._bordered)
+                        td.style.border = "1px solid";
+                    if (this._bold)
+                        td.style.fontWeight = "bold";
+                    const span = el.span(func);
+                    el.print(td, span);
+                    el.print(this.lastRow, td);
+                    return this;
+                }
+            }
+            internal.ElementTableApi = ElementTableApi;
+        })(internal = el.internal || (el.internal = {}));
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        class Span {
+            constructor(span, reloadTime = 600) {
+                this.span = span;
+                this.reloadTime = reloadTime;
+                if (span.tagName !== "SPAN") {
+                    throw new Error("Tag name should be: span. Not: " + span.tagName);
+                }
+            }
+            appendChild(child) {
+                this.print(child);
+            }
+            println(elem) {
+                return el.println(this.span, elem);
+            }
+            print(elem) {
+                return el.print(this.span, elem);
+            }
+            printCenter(elem) {
+                this.print(el.center(elem));
+                return elem;
+            }
+            printCenterln(elem) {
+                this.println(el.center(elem));
+                return elem;
+            }
+            printf(t, ...args) {
+                Engine.fmt.parsedPrint(this.span, t, args);
+            }
+            printAll(...elements) {
+                el.printAll(this.span, ...elements);
+            }
+            link(caption, cb) {
+                return this.print(el.link(caption, cb));
+            }
+            linkln(caption, cb) {
+                return this.println(el.link(caption, cb));
+            }
+            button(caption, cb) {
+                return this.print(el.button(caption, cb));
+            }
+            buttonln(caption, cb) {
+                return this.println(el.button(caption, cb));
+            }
+            relink(caption, cb) {
+                return this.print(el.relink(this, caption, cb));
+            }
+            relinkln(caption, cb) {
+                return this.println(el.relink(this, caption, cb));
+            }
+            rebutton(caption, cb) {
+                return this.print(el.rebutton(this, caption, cb));
+            }
+            rebuttonln(caption, cb) {
+                return this.println(el.rebutton(this, caption, cb));
+            }
+            hr() {
+                return this.print(el.hr());
+            }
+            br() {
+                return this.print(el.br());
+            }
+            title(text, center) {
+                const title = el.title(text);
+                if (center === true) {
+                    this.print(el.center(title));
+                }
+                else {
+                    this.print(title);
+                }
+                return title;
+            }
+            async reload() {
+                if (this.reloadTime < 1) {
+                    await el.reload(this.span);
+                }
+                else {
+                    await el.reloadFade(this.span, this.reloadTime);
+                }
+            }
+            clear() {
+                el.clear(this.span);
+            }
+            pass(caption, passage, args, cb) {
+                return this.print(el.passlink(caption, passage, args, cb));
+            }
+            passln(caption, passage, args, cb) {
+                return this.println(el.passlink(caption, passage, args, cb));
+            }
+            passClean(caption, passage, args, cb) {
+                return this.print(el.passCleanLink(caption, passage, args, cb));
+            }
+            passCleanln(caption, passage, args, cb) {
+                return this.println(el.passCleanLink(caption, passage, args, cb));
+            }
+            img(src, isCenter = false) {
+                if (!isCenter) {
+                    return this.print(el.img(src));
+                }
+                else {
+                    return this.printCenter(el.img(src));
+                }
+            }
+            ;
+            isConnected() {
+                return this.span.isConnected;
+            }
+            timer(ms, cb) {
+                const timer = Engine.Timer.single(ms, () => {
+                    if (!this.isConnected())
+                        return;
+                    cb();
+                });
+                return timer;
+            }
+            interval(ms, cb) {
+                const timer = Engine.Timer.interval(ms, () => {
+                    if (!this.isConnected()) {
+                        timer.stop();
+                        return;
+                    }
+                    ;
+                    cb();
+                });
+                return timer;
+            }
+            wait(ms) {
+                return new Promise(async (ok) => {
+                    await Engine.Timer.wait(ms);
+                    if (!this.span.isConnected)
+                        return;
+                    ok();
+                });
+            }
+            type(text, ms, onChar, onDone) {
+                return this.print(el.typing(text, ms, onChar, onDone));
+            }
+            typeln(text, ms, onChar, onDone) {
+                return this.println(el.typing(text, ms, onChar, onDone));
+            }
+            canvas(w, h, cb) {
+                return this.print(el.canvas(w, h, cb));
+            }
+            canvasln(w, h, cb) {
+                return this.println(el.canvas(w, h, cb));
+            }
+            relinkPassage(caption, args, cb) {
+                return this.link(caption, () => {
+                    if (cb)
+                        cb();
+                    Passage.reload(args);
+                });
+            }
+            relinkPassageln(caption, args, cb) {
+                return this.linkln(caption, () => {
+                    if (cb)
+                        cb();
+                    Passage.reload(args);
+                });
+            }
+            clink(caption, cb) {
+                return this.link(caption, () => {
+                    this.fadeChange(() => {
+                        cb();
+                    });
+                });
+            }
+            clinkln(caption, cb) {
+                return this.linkln(caption, () => {
+                    this.fadeChange(() => {
+                        cb();
+                    });
+                });
+            }
+            cbutton(caption, cb) {
+                return this.button(caption, () => {
+                    this.fadeChange(() => {
+                        cb();
+                    });
+                });
+            }
+            cbuttonln(caption, cb) {
+                return this.buttonln(caption, () => {
+                    this.fadeChange(() => {
+                        cb();
+                    });
+                });
+            }
+            fadeOut(ms) {
+                let time = ms;
+                if (isNull(time))
+                    time = this.reloadTime;
+                Util.declick(this.span);
+                return Engine.Effect.fadeOut(this.span, time);
+            }
+            fadeIn(ms) {
+                let time = ms;
+                if (isNull(time))
+                    time = this.reloadTime;
+                return Engine.Effect.fadeIn(this.span, time);
+            }
+            async fadeChange(cb, ms) {
+                let time = ms;
+                if (isNull(time))
+                    time = this.reloadTime;
+                time /= 2;
+                await this.fadeOut(time);
+                this.clear();
+                cb();
+                await this.fadeIn(time);
+            }
+            table(f) {
+                return this.print(el.table(f));
+            }
+            quest(q) {
+                const quest = new Util.Quest(q);
+                this.print(quest);
+                return quest;
+            }
+            input(value, placeHolder) {
+                return this.print(el.input(value, placeHolder));
+            }
+            inputln(value, placeHolder) {
+                return this.println(el.input(value, placeHolder));
+            }
+        }
+        el.Span = Span;
+    })(el || (el = {}));
+    var el;
+    (function (el) {
+        class PassageSpan extends el.Span {
+            constructor(span, reloadTime = 600) {
+                super(span, reloadTime);
+            }
+            async reload(args) {
+                Passage.reload(args);
+            }
+            goto(name, args) {
+                return Passage.goto(name, args);
+            }
+            args() {
+                return Passage.args();
+            }
+            arg(n) {
+                return Passage.arg(n);
+            }
+        }
+        el.PassageSpan = PassageSpan;
+    })(el || (el = {}));
+    var Engine;
+    (function (Engine) {
+        function anchor() {
+            let hash = decodeURI(window.location.hash);
+            if (hash.length < 1)
+                return {};
+            if (hash.startsWith("#"))
+                hash = hash.substring(1);
+            return parseDataString(hash);
+        }
+        Engine.anchor = anchor;
+        function setAnchor(dat) {
+            const sb = [];
+            Object.keys(dat).forEach(key => {
+                const value = dat[key];
+                sb.push(`${key}=${value}`);
+            });
+            const h = sb.join("&");
+            window.location.replace(urlBeforeHash() + "#" + h);
+        }
+        Engine.setAnchor = setAnchor;
+        function urlBeforeHash() {
+            const loc = window.location.toString();
+            const id = loc.indexOf("#");
+            if (id === -1) {
+                return new URL(loc);
+            }
+            return new URL(loc.substring(0, id));
+        }
+        function parseDataString(line) {
+            const out = {};
+            let sb = [];
+            let currentKey = "";
+            let leftStatus = true;
+            const sbCollect = () => {
+                const s = sb.join("");
+                sb = [];
+                return s;
+            };
+            for (let c of line) {
+                if (leftStatus) {
+                    if (c === "=") {
+                        currentKey = sbCollect();
+                        if (currentKey.length < 1)
+                            throw new Error("Hash parameters are invalid");
+                        leftStatus = false;
+                    }
+                    else if (c === " " || c === "\t") {
+                        continue;
+                    }
+                    else {
+                        sb.push(c);
+                    }
+                }
+                else {
+                    if (c === "&") {
+                        const value = sbCollect();
+                        if (value.length < 1)
+                            throw new Error("Hash parameters are invalid");
+                        out[currentKey] = value;
+                        leftStatus = true;
+                    }
+                    else {
+                        sb.push(c);
+                    }
+                }
+            }
+            const lastValue = sbCollect();
+            if (lastValue.length > 0) {
+                out[currentKey] = lastValue;
+            }
+            return out;
+        }
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        class _Audio {
+            static data() {
+                if (!V.audio_data) {
+                    V.audio_data = {
+                        music: {
+                            src: "",
+                            playing: false,
+                            time: 0,
+                            volume: 1
+                        }
+                    };
+                }
+                return V.audio_data;
+            }
+            static async closeMusic() {
+                if (isNull(this.music)) {
+                    return;
+                }
+                this.stopMusic();
+                this.music.pause();
+                this.music.currentTime = 0;
+            }
+            static stopMusic() {
+                this.music.src = "";
+                this.music.volume = 0;
+                this.paused = true;
+                this.currentTime = 0;
+                let dat = this.data();
+                dat.music.src = "";
+                dat.music.volume = 0;
+                dat.music.time = 0;
+                dat.music.playing = false;
+            }
+            static async playMusic(src, vol, time) {
+                await this.closeMusic();
+                this.music = await Engine.Loader.audio(src);
+                this.music.loop = true;
+                this.music.volume = vol;
+                if (time !== undefined) {
+                    this.music.currentTime = time;
+                }
+                const dat = this.data();
+                dat.music.src = src;
+                dat.music.volume = vol;
+                dat.music.time = this.music.currentTime;
+                dat.music.playing = true;
+                this.music.play().catch(async (e) => {
+                    if (e instanceof DOMException) {
+                        if (e.message.indexOf("no supported source") !== -1) {
+                            window.alert("Failed to load music. No supported source: " + src);
+                            return;
+                        }
+                        console.warn(e.message);
+                        this.__spawnAudioScreen(() => this.playMusic(src, vol, time));
+                    }
+                });
+            }
+            static restoreMusic() {
+                const dat = this.data();
+                if (dat.music.playing) {
+                    this.playMusic(dat.music.src, dat.music.volume, dat.music.time);
+                }
+            }
+            static savingMusicTimer() {
+                if (this.timer)
+                    clearInterval(this.timer);
+                const dat = this.data();
+                this.timer = setInterval(() => {
+                    if (!isNull(this.music) && !this.music.paused) {
+                        dat.music.time = this.music.currentTime;
+                    }
+                }, 2000);
+                return this.timer;
+            }
+            static __spawnAudioScreen(cb) {
+                const blocking = el.selectOne("#sound-block-click");
+                if (isNull(blocking)) {
+                    const div = el.of("div", div => {
+                        div.id = "sound-block-click";
+                        div.style.opacity = "0";
+                        div.style.position = "fixed";
+                        div.style.width = "100%";
+                        div.style.height = "100vh";
+                        div.style.top = "0px";
+                        div.style.left = "0px";
+                        div.onclick = () => {
+                            cb();
+                            el.remove(div);
+                        };
+                    });
+                    el.print(document.body, div);
+                }
+                else {
+                    console.info("Music block element is already called. Reassigning callback");
+                    blocking.onclick = async () => {
+                        cb();
+                        el.remove(blocking);
+                    };
+                }
+            }
+            static async playSound(src, volume, onended) {
+                const aud = await Engine.Loader.audio(src);
+                aud.volume = volume;
+                if (!isNull(onended))
+                    aud.onended = onended;
+                aud.play();
+                return aud;
+            }
+            static time() {
+                if (isNull(this.music) || this.music.paused) {
+                    return null;
+                }
+                return this.music.currentTime;
+            }
+            static setTime(time) {
+                if (isNull(this.music))
+                    return;
+                this.music.currentTime = time;
+            }
+            static isPlaying() {
+                return !isNull(this.time());
+            }
+            static isPaused() {
+                return isNull(this.time());
+            }
+            static waitTime(timeSeconds) {
+                if (this.isPaused())
+                    return Promise.resolve();
+                return new Promise(ok => {
+                    const timer = Engine.Timer.interval(1000, () => {
+                        const time = this.time();
+                        if (isNull(time)) {
+                            timer.stop();
+                            return;
+                        }
+                        if (time >= timeSeconds) {
+                            timer.stop();
+                            ok();
+                        }
+                    });
+                });
+            }
+        }
+        _Audio.music = new window.Audio();
+        _Audio.paused = true;
+        _Audio.currentTime = 0;
+        _Audio.timer = 0;
+        Engine.Audio = _Audio;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        class Bg {
+            static _data() {
+                if (isNull(V.engine_bg_data)) {
+                    V.engine_bg_data = {
+                        src: null,
+                    };
+                }
+                return V.engine_bg_data;
+            }
+            static restore() {
+                const src = this._data().src;
+                if (isNull(src)) {
+                    this.remove();
+                }
+                else {
+                    this.set(src);
+                }
+            }
+            static remove() {
+                this._data().src = null;
+                const b = document.body.style;
+                b['background-image'] = "";
+                b["background-repeat"] = "";
+                b["background-size"] = "";
+                b["background-position"] = "";
+                b["background-attachment"] = "";
+            }
+            static set(src) {
+                if (isNull(src))
+                    return;
+                this._data().src = src;
+                const b = document.body.style;
+                b['background-image'] = "url(\"" + src + "\")";
+                b["background-repeat"] = "no-repeat";
+                b["background-size"] = "auto 100vh";
+                b["background-position"] = "top";
+                b["background-attachment"] = "fixed";
+            }
+        }
+        Engine.Bg = Bg;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        class Binary {
+            static encode(string) {
+                const codeUnits = new Uint16Array(string.length);
+                for (let i = 0; i < codeUnits.length; i++) {
+                    codeUnits[i] = string.charCodeAt(i);
+                }
+                return btoa(String.fromCharCode(...new Uint8Array(codeUnits.buffer)));
+            }
+            static decode(encoded_str) {
+                const binary = atob(encoded_str);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < bytes.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                return String.fromCharCode(...new Uint16Array(bytes.buffer));
+            }
+        }
+        Engine.Binary = Binary;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        const onloads = [];
+        function addOnload(f) {
+            onloads.push(f);
+        }
+        Engine.addOnload = addOnload;
+        let internal;
+        (function (internal) {
+            async function startOnLoads() {
+                for (let f of onloads) {
+                    await f();
+                }
+            }
+            internal.startOnLoads = startOnLoads;
+        })(internal = Engine.internal || (Engine.internal = {}));
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        function dropdown(values_getter, onchange, defValue) {
+            const selector = el.of("select");
+            values_getter().forEach(p => {
+                el.print(selector, el.of("option", o => {
+                    o.value = p;
+                    o.innerHTML = p;
+                }));
+            });
+            selector.onchange = (e) => {
+                if (e.target)
+                    onchange(e.target.value);
+            };
+            selector.style.backgroundColor = "black";
+            selector.style.color = "white";
+            selector.style.fontSize = "24px";
+            selector.style.padding = "5px";
+            selector.style.borderRadius = "16px";
+            if (defValue !== undefined) {
+                selector.value = defValue;
+            }
+            return selector;
+        }
+        class Debug {
+            static data() {
+                if (!V.debug_data) {
+                    V.debug_data = {
+                        hidden: true,
+                    };
+                }
+                return V.debug_data;
+            }
+            static activatePanel() {
+                this.__renderPanelView(el.select("#debug-panel")[0]);
+            }
+            static __renderPanelView(panelDiv) {
+                el.clear(panelDiv);
+                if (this.data().hidden) {
+                    panelDiv.style.backgroundColor = "";
+                    panelDiv.style.padding = "";
+                    panelDiv.style.borderRadius = "";
+                    panelDiv.style.position = "fixed";
+                    panelDiv.style.right = "0px";
+                    panelDiv.style.top = "0px";
+                    panelDiv.style.zIndex = 99;
+                    el.print(panelDiv, el.button("🛑DEBUG", () => {
+                        this.data().hidden = false;
+                        this.__renderPanelView(panelDiv);
+                    }));
+                }
+                else {
+                    panelDiv.style.backgroundColor = "#333333";
+                    panelDiv.style.padding = "16px";
+                    panelDiv.style.borderRadius = "12px";
+                    panelDiv.style.position = "relative";
+                    panelDiv.style.right = "";
+                    panelDiv.style.top = "";
+                    panelDiv.style.zIndex = 99;
+                    el.print(panelDiv, el.button("🛑CLOSE", () => {
+                        this.data().hidden = true;
+                        this.__renderPanelView(panelDiv);
+                    }));
+                    el.print(panelDiv, dropdown(() => Passage.list(), passageName => Passage.goto(passageName), Passage.current()));
+                    el.print(panelDiv, el.button("🔄️RELOAD", () => Passage.reload()));
+                    el.print(panelDiv, el.button("⚠️RESET", () => {
+                        sessionStorage.clear();
+                        Engine.setAnchor({});
+                        location.reload();
+                    }));
+                    el.print(panelDiv, el.hr());
+                    el.print(panelDiv, el.button("🧮Save to SESSION", () => {
+                        const ms = performance.now();
+                        Engine.Variables.save();
+                        console.log("Variables saved in " + (performance.now() - ms) + " ms");
+                    }));
+                    el.print(panelDiv, el.button("💾Save to FILE", () => {
+                        Engine.Variables.saveFile();
+                    }));
+                    el.print(panelDiv, el.button("📂Load from FILE", () => {
+                        Engine.Variables.loadFile();
+                    }));
+                    const varListDropdown = (span) => {
+                        el.clear(span);
+                        el.print(span, dropdown(() => Object.keys(V).sort(), name => {
+                            const varNameElement = el.select("#debug-varname")[0];
+                            varNameElement.value = name;
+                            if (!isNull(varNameElement.onchange)) {
+                                varNameElement.onchange(null);
+                            }
+                        }));
+                    };
+                    el.print(panelDiv, el.span().ID("debug-varname-list"));
+                    el.print(panelDiv, el.button("🔄️", () => varListDropdown(el.select("#debug-varname-list")[0])));
+                    varListDropdown(el.select("#debug-varname-list")[0]);
+                    el.print(panelDiv, el.of("input", inp => {
+                        const input = inp;
+                        input.placeholder = "Variable Name";
+                        input.style.backgroundColor = "black";
+                        input.style.color = "white";
+                        input.style.borderRadius = "16px";
+                        input.style.padding = "5px";
+                        input.style.width = "80%";
+                        input.onchange = () => {
+                            const name = input.value;
+                            if (name.length < 1)
+                                return;
+                            const value = V[name];
+                            if (value !== undefined && value !== undefined) {
+                                el.select("#debug-varval")[0].value = Engine.pack(value);
+                            }
+                            else {
+                                el.select("#debug-varval")[0].value = "null";
+                            }
+                        };
+                    }).ID("debug-varname"));
+                    el.print(panelDiv, el.button("▶️Update", () => {
+                        const name = el.select("#debug-varname")[0].value;
+                        const value_t = el.select("#debug-varval")[0].value;
+                        V[name] = Engine.unpack(value_t);
+                    }));
+                    el.print(panelDiv, el.of("textarea", t => {
+                        const area = t;
+                        area.placeholder = "Variable Value";
+                        area.style.backgroundColor = "black";
+                        area.style.color = "white";
+                        area.style.borderRadius = "16px";
+                        area.style.padding = "5px";
+                        area.style.width = "100%";
+                        area.style.height = "100px";
+                    }).ID("debug-varval"));
+                    el.print(panelDiv, el.button("🔇Stop the MUSIC", () => {
+                        Engine.Audio.stopMusic();
+                    }));
+                    el.print(panelDiv, el.button("⏲️Stop the TIMERS", () => {
+                        Engine.Timer.clear();
+                    }));
+                }
+            }
+        }
+        Engine.Debug = Debug;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        class Effect {
+            static fadeIn(element, ms = 600) {
+                return new Promise((ok, fail) => {
+                    if (!(element instanceof HTMLElement)) {
+                        return fail(new Error("Element should be instance of HTMLElement"));
+                    }
+                    element.style.transition = "" + ms + "ms";
+                    element.style.opacity = "1";
+                    Engine.Timer.single(ms, () => {
+                        ok(undefined);
+                    });
+                });
+            }
+            static fadeOut(element, ms = 600) {
+                return new Promise((ok, fail) => {
+                    if (!(element instanceof HTMLElement)) {
+                        return fail(new Error("Element should be instance of HTMLElement"));
+                    }
+                    element.style.transition = "" + ms + "ms";
+                    element.style.opacity = "0";
+                    Engine.Timer.single(ms, () => {
+                        ok(undefined);
+                    });
+                });
+            }
+            static async fadeChange(element, ms, cb) {
+                await this.fadeOut(element, ms / 2);
+                cb(element);
+                await this.fadeIn(element, ms / 2);
+            }
+        }
+        Engine.Effect = Effect;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        var fmt;
+        (function (fmt) {
+            const SIMPLE = 0;
+            const BOLD = 1;
+            const ITALIC = 2;
+            function parsedPrint(target, text, args) {
+                const span = el.span();
+                for (let [line, type] of _parseTypes(text, args)) {
+                    let element = line;
+                    if (type === BOLD) {
+                        element = _elem("b", line);
+                    }
+                    else if (type === ITALIC) {
+                        element = _elem("i", line);
+                    }
+                    el.print(target, element);
+                }
+                el.println(target, span);
+            }
+            fmt.parsedPrint = parsedPrint;
+            function _elem(tag, text) {
+                return el.of(tag, b => {
+                    b.innerText = text;
+                });
+            }
+            function _parseTypes(text, args) {
+                let currentType = SIMPLE;
+                const array = [];
+                let sb = [];
+                let variablePrinting = false;
+                let variablePrintingSb = [];
+                const collect = () => {
+                    if (sb.length > 0) {
+                        array.push([sb.join(""), currentType]);
+                        sb = [];
+                    }
+                };
+                for (let i = 0; i < text.length; i++) {
+                    const char = text.charAt(i);
+                    const charAndSecond = char + text.charAt(i + 1);
+                    if (charAndSecond === "$(") {
+                        variablePrinting = true;
+                        i += 1;
+                        continue;
+                    }
+                    if (variablePrinting) {
+                        if (char === ")") {
+                            const varName = variablePrintingSb.join("");
+                            collect();
+                            const parsedInt = parseInt(varName);
+                            let value = "";
+                            if (!Number.isNaN(parsedInt)) {
+                                value = args[parsedInt];
+                            }
+                            else {
+                                value = V[varName];
+                            }
+                            if (isNull(value)) {
+                                value = `[${varName}: null]`;
+                            }
+                            array.push([value, SIMPLE]);
+                            variablePrinting = false;
+                            variablePrintingSb = [];
+                        }
+                        else {
+                            variablePrintingSb.push(char);
+                        }
+                        continue;
+                    }
+                    if (charAndSecond === "__") {
+                        collect();
+                        if (currentType === BOLD) {
+                            currentType = SIMPLE;
+                        }
+                        else {
+                            currentType = BOLD;
+                        }
+                        i += 1;
+                        continue;
+                    }
+                    else if (charAndSecond === "//") {
+                        collect();
+                        if (currentType === ITALIC) {
+                            currentType = SIMPLE;
+                        }
+                        else {
+                            currentType = ITALIC;
+                        }
+                        i += 1;
+                        continue;
+                    }
+                    sb.push(char);
+                }
+                collect();
+                return array;
+            }
+        })(fmt = Engine.fmt || (Engine.fmt = {}));
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        function isDebugMode() {
+            return window['isDebugMode'] || false;
+        }
+        Engine.isDebugMode = isDebugMode;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        const imageCache = new Map();
+        class Loader {
+            static async load(...srclist) {
+                const arr = [];
+                for (let src of srclist) {
+                    if (src.endsWith(".jpg") || src.endsWith(".jpeg")
+                        || src.endsWith(".png") || src.endsWith(".avif")
+                        || src.endsWith(".svg") || src.endsWith(".webp") || src.endsWith(".bmp")) {
+                        arr.push(await this.image(src));
+                    }
+                    else if (src.endsWith("mp3") || src.endsWith("ogg")
+                        || src.endsWith("weba") || src.endsWith("flac")
+                        || src.endsWith("opus") || src.endsWith("aac") || src.endsWith("wav")) {
+                        arr.push(await this.audio(src));
+                    }
+                    else {
+                        throw new Error("This src is not supported: " + src);
+                    }
+                }
+                return arr;
+            }
+            static image(src) {
+                return new Promise((ok, err) => {
+                    const cached = imageCache.get(src);
+                    if (!isNull(cached)) {
+                        return ok(cached);
+                    }
+                    const img = new Image();
+                    img.src = src;
+                    img.onload = () => {
+                        ok(img);
+                        imageCache.set(src, img);
+                    };
+                    img.onerror = (e) => {
+                        err(e);
+                    };
+                });
+            }
+            static audio(src) {
+                return new Promise((ok, err) => {
+                    const aud = new window.Audio();
+                    aud.src = src;
+                    aud.onloadedmetadata = () => {
+                        ok(aud);
+                    };
+                    aud.onerror = (e) => {
+                        err(e);
+                    };
+                });
+            }
+        }
+        Engine.Loader = Loader;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        const NAME_KEY = "_&#";
+        function getClassByName(path) {
+            try {
+                return path.split('.').reduce((prev, next) => prev[next], Game);
+            }
+            catch (e) {
+                return null;
+            }
+        }
+        function packObj(obj) {
+            if (isNull(obj)) {
+                return null;
+            }
+            if (obj instanceof Array) {
+                return obj.map(packObj);
+            }
+            else if (typeof (obj) === "object") {
+                if (obj.constructor && obj.constructor._path) {
+                    const fullName = obj.constructor._path;
+                    const v = {};
+                    v[NAME_KEY] = fullName;
+                    for (let k of Object.keys(obj)) {
+                        v[k] = packObj(obj[k]);
+                    }
+                    return v;
+                }
+                else {
+                    const v = {};
+                    for (let k of Object.keys(obj)) {
+                        v[k] = packObj(obj[k]);
+                    }
+                    return v;
+                }
+            }
+            return obj;
+        }
+        function unpackObj(obj) {
+            if (isNull(obj)) {
+                return null;
+            }
+            if (obj instanceof Array) {
+                return obj.map(unpackObj);
+            }
+            else if (typeof (obj) === "object") {
+                if (obj[NAME_KEY]) {
+                    const fullName = obj[NAME_KEY];
+                    const CLAZZ = getClassByName(fullName);
+                    if (!CLAZZ)
+                        throw new Error("Class: " + fullName + " : Is not found");
+                    const v = new CLAZZ();
+                    Object.keys(v)
+                        .filter(k => k !== NAME_KEY)
+                        .forEach(k => v[k] = unpackObj(obj[k]));
+                    return v;
+                }
+                else {
+                    const v = {};
+                    for (let k of Object.keys(obj)) {
+                        v[k] = unpackObj(obj[k]);
+                    }
+                    return v;
+                }
+            }
+            return obj;
+        }
+        function pack(obj) {
+            return JSON.stringify(packObj(obj));
+        }
+        Engine.pack = pack;
+        function unpack(str) {
+            return unpackObj(JSON.parse(str));
+        }
+        Engine.unpack = unpack;
+    })(Engine || (Engine = {}));
+    var Game;
+    (function (Game) {
+        function dto(obj, path) {
+            if (isNull(obj))
+                return;
+            for (let k of Object.keys(obj)) {
+                const subObject = obj[k];
+                const typ = typeof (subObject);
+                if (typ === "object") {
+                    Game.dto(subObject, path + "." + k);
+                }
+                else if (typ === "function") {
+                    if (subObject.constructor && isNull(subObject._path)) {
+                        subObject._path = path + "." + subObject.name;
+                    }
+                }
+            }
+            if (path.indexOf(".") === -1) {
+                if (path.length < 1) {
+                    throw new Error("Game.dto: Name should not be empty");
+                }
+                if (path[0] !== path[0].toUpperCase()) {
+                    throw new Error("Game.dto: Name should start with upper case letter");
+                }
+                if (Game[path]) {
+                    throw new Error("Game.dto: Can't define new " + path + " namespace as it already exist");
+                }
+                Game[path] = obj;
+            }
+        }
+        Game.dto = dto;
+    })(Game || (Game = {}));
+    var Engine;
+    (function (Engine) {
+        class Pos {
+            static _data() {
+                if (!V.engine_pos) {
+                    V.engine_pos = {
+                        current: "top"
+                    };
+                }
+                return V.engine_pos;
+            }
+            static _element() {
+                return el.selectOne("#app-pos");
+            }
+            static _apply_default() {
+                const div = this._element();
+                div.style['display'] = "block";
+                div.style['justify-content'] = '';
+                div.style['align-items'] = '';
+                div.style['position'] = '';
+                div.style['bottom'] = '';
+                div.style['width'] = '';
+                div.style['height'] = '';
+                div.style['max-height'] = '100vh';
+                div.style['overflow-wrap'] = 'anywhere';
+                Engine.app.style['max-height'] = '';
+                Engine.app.style['overflow-y'] = '';
+            }
+            static restore() {
+                const pos = this._data().current;
+                switch (pos) {
+                    case "center":
+                        this.center();
+                        break;
+                    case "top":
+                        this.top();
+                        break;
+                    case "bottom":
+                        this.bottom();
+                        break;
+                }
+            }
+            static top() {
+                this._apply_default();
+                this._data().current = "top";
+            }
+            static center() {
+                this._apply_default();
+                this._data().current = "center";
+                const div = this._element();
+                div.style['display'] = "inline-flex";
+                div.style['justify-content'] = "center";
+                div.style['align-items'] = "center";
+                div.style['position'] = 'relative';
+                div.style['width'] = '100%';
+                div.style['height'] = '90vh';
+                div.style['max-height'] = '100vh';
+                div.style['overflow-wrap'] = 'anywhere';
+            }
+            static bottom() {
+                this._apply_default();
+                this._data().current = "bottom";
+                const div = this._element();
+                div.style['display'] = "block";
+                div.style['align-items'] = 'center';
+                div.style['position'] = 'absolute';
+                div.style['bottom'] = '64px';
+                div.style['width'] = '90%';
+                div.style['max-height'] = '50vh';
+                div.style['overflow-wrap'] = 'anywhere';
+                Engine.app.style['max-height'] = '50vh';
+                Engine.app.style['overflow-y'] = 'auto';
+            }
+        }
+        Engine.Pos = Pos;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        class Timer {
+            constructor(id, isInterval) {
+                this.id = id;
+                this.isInterval = isInterval;
+                this.stopped = false;
+            }
+            stop() {
+                if (this.stopped)
+                    return;
+                if (this.isInterval) {
+                    clearInterval(this.id);
+                }
+                else {
+                    clearTimeout(this.id);
+                }
+            }
+            static clear() {
+                for (let timer of this._timers) {
+                    timer.stop();
+                }
+                this._timers = [];
+                if (this._counter >= 0xFFFF)
+                    this._counter = 0;
+                this._counter += 1;
+            }
+            static interval(ms, cb) {
+                const counter = this._counter;
+                const timer = new Timer(setInterval(() => {
+                    if (counter !== this._counter) {
+                        timer.stop();
+                        return;
+                    }
+                    cb();
+                }, ms), true);
+                this._timers.push(timer);
+                return timer;
+            }
+            static single(ms, cb) {
+                const counter = this._counter;
+                const timer = new Timer(setTimeout(() => {
+                    if (counter !== this._counter) {
+                        timer.stop();
+                        return;
+                    }
+                    cb();
+                }, ms), false);
+                this._timers.push(timer);
+                return timer;
+            }
+            static wait(ms) {
+                return new Promise(ok => {
+                    this.single(ms, ok);
+                });
+            }
+            static loadNovelStart() {
+                if (isNull(V.novel_start_ms)) {
+                    V.novel_start_ms = new Date().getTime();
+                }
+            }
+            static elapsed() {
+                return new Date().getTime() - V.novel_start_ms;
+            }
+            static elapsedSec() {
+                const time = this.elapsed();
+                return Math.floor(time / 1000);
+            }
+            static elapsedMinSec() {
+                const timeSec = this.elapsedSec();
+                return [
+                    Math.floor(timeSec / 60),
+                    timeSec,
+                ];
+            }
+        }
+        Timer._timers = [];
+        Timer._counter = 0;
+        Engine.Timer = Timer;
+    })(Engine || (Engine = {}));
+    var Game;
+    (function (Game) {
+        var text;
+        (function (text_1) {
+            const texts = {};
+            function add(name, text) {
+                let list = texts[name];
+                if (isNull(list)) {
+                    list = [];
+                    texts[name] = list;
+                }
+                list.push(text);
+            }
+            text_1.add = add;
+            function get(name) {
+                const list = texts[name];
+                if (isNull(list))
+                    return [];
+                return list.map(it => it);
+            }
+            text_1.get = get;
+            function list() {
+                return Object.keys(texts);
+            }
+            text_1.list = list;
+        })(text = Game.text || (Game.text = {}));
+    })(Game || (Game = {}));
+    var Game;
+    (function (Game) {
+        function v(name, def) {
+            const v = new Engine.VariableInstance(name);
+            if (!isNull(def))
+                v.init(def);
+            return v;
+        }
+        Game.v = v;
+        ;
+        function save() {
+            Engine.Variables.save();
+        }
+        Game.save = save;
+        function saveFile() {
+            Engine.Variables.saveFile();
+        }
+        Game.saveFile = saveFile;
+    })(Game || (Game = {}));
+    var Passage;
+    (function (Passage) {
+        const passages = {};
+        function _setPassageArgs(args) {
+            V.passage_args = args;
+        }
+        function setCurrent(name) {
+            V["passage"] = name;
+        }
+        function current() {
+            if (!V.passage) {
+                V.passage = "Start";
+            }
+            return V.passage;
+        }
+        Passage.current = current;
+        function list() {
+            return Object.keys(passages);
+        }
+        Passage.list = list;
+        function goto(name, args) {
+            const passageFunc = passages[name];
+            if (passageFunc) {
+                Util.declick(Engine.app);
+                Engine.Effect.fadeChange(Engine.app, 600, async () => {
+                    el.clear(Engine.app);
+                    Engine.Timer.clear();
+                    setCurrent(name);
+                    if (isNull(args) || !Array.isArray(args)) {
+                        _setPassageArgs([]);
+                    }
+                    else {
+                        _setPassageArgs(args);
+                    }
+                    el.print(Engine.app, el.of("span", rawSpan => passageFunc(new el.PassageSpan(rawSpan))));
+                    if (Engine.Config.autoSaveOnGoto)
+                        Engine.Variables.save();
+                });
+                return true;
+            }
+            else {
+                const message = "No passage: " + name;
+                window.alert(message);
+                console.error(message);
+                return false;
+            }
+        }
+        Passage.goto = goto;
+        function reload(passageArgs) {
+            if (isNull(passageArgs)) {
+                passageArgs = Passage.args();
+            }
+            return goto(current(), passageArgs);
+        }
+        Passage.reload = reload;
+        function _reloadOnStart() {
+            goto(current(), args());
+        }
+        Passage._reloadOnStart = _reloadOnStart;
+        function args() {
+            if (!V.passage_args) {
+                V.passage_args = [];
+            }
+            return V.passage_args;
+        }
+        Passage.args = args;
+        function arg(n) {
+            const arguments = args();
+            if (n < 0 || n >= arguments.length)
+                return null;
+            const value = arguments[n];
+            if (isNull(value))
+                return null;
+            return value;
+        }
+        Passage.arg = arg;
+        function of(name, f) {
+            if (passages[name]) {
+                const message = "Passage '" + name + "' is already exists";
+                window.alert(message);
+                throw new Error(message);
+            }
+            passages[name] = f;
+        }
+        Passage.of = of;
+    })(Passage || (Passage = {}));
+    var Passage;
+    (function (Passage) {
+        function ofCanvas(name, fn) {
+            Passage.of(name, s => {
+                let canvasApi = null;
+                const w = Engine.app.clientWidth * 0.9;
+                const h = window.innerHeight * 0.85;
+                s.canvasln(w, h, C => {
+                    canvasApi = C;
+                });
+                if (isNull(canvasApi))
+                    throw new Error("Passage Canvas created without Canvas API");
+                fn(canvasApi, s);
+            });
+        }
+        Passage.ofCanvas = ofCanvas;
+    })(Passage || (Passage = {}));
+    var Passage;
+    (function (Passage) {
+        let internal;
+        (function (internal) {
+            class ChoicePassageApi {
+                constructor(_passageName, args) {
+                    this._passageName = _passageName;
+                    this.args = args;
+                    this._variants = [];
+                }
+                caption(n) {
+                    this._caption = n;
+                    return this;
+                }
+                variant(caption, passage, passageArgs, cb) {
+                    this._variants.push([caption, passage, passageArgs, cb]);
+                    return this;
+                }
+                reload(caption, passageArgs, cb) {
+                    this._variants.push([caption, this._passageName, passageArgs, cb]);
+                    return this;
+                }
+                image(src) {
+                    this._image = src;
+                    return this;
+                }
+                timer(sec, passage, passageArgs, action) {
+                    this._timer = [sec, passage, passageArgs, action];
+                    return this;
+                }
+                className(name) {
+                    this._className = name;
+                    return this;
+                }
+                extractData() {
+                    return {
+                        caption: this._caption,
+                        variants: this._variants,
+                        image: this._image,
+                        timer: this._timer,
+                        className: this._className,
+                    };
+                }
+            }
+            internal.ChoicePassageApi = ChoicePassageApi;
+        })(internal = Passage.internal || (Passage.internal = {}));
+        function ofChoice(name, cb) {
+            Passage.of(name, s => {
+                const c = new internal.ChoicePassageApi(name, () => s.args());
+                cb(c);
+                const { caption, variants, image, timer, className } = c.extractData();
+                if (image)
+                    s.img(image, true);
+                const timerElement = el.of("b");
+                s.println([caption, timerElement]);
+                s.hr();
+                for (let [caption, passage, args, action] of variants) {
+                    s.passln(caption, passage, args, action).CLASS(className);
+                }
+                if (timer) {
+                    const [sec, passage, passageArgs, action] = timer;
+                    let intervalCount = sec;
+                    function updateElement() {
+                        timerElement.innerHTML = "⏲️" + intervalCount;
+                    }
+                    s.interval(1000, () => {
+                        intervalCount -= 1;
+                        if (intervalCount < 1) {
+                            if (action)
+                                action();
+                            Passage.goto(passage, passageArgs);
+                        }
+                        updateElement();
+                    });
+                    updateElement();
+                }
+            });
+        }
+        Passage.ofChoice = ofChoice;
+    })(Passage || (Passage = {}));
+    var Passage;
+    (function (Passage) {
+        let internal;
+        (function (internal) {
+            function _isMusicTime(o) {
+                return Array.isArray(o) && o.length === 2 && o[0] === "mus";
+            }
+            function _waitWithTime(sec, action) {
+                if (_isMusicTime(sec)) {
+                    const timeSec = sec[1];
+                    Engine.Audio.waitTime(timeSec).then(() => action());
+                }
+                else {
+                    Engine.Timer.single(sec * 1000, action);
+                }
+            }
+            function _printCenter(s, element, center) {
+                if (center) {
+                    s.printCenter(element);
+                }
+                else {
+                    s.print(element);
+                }
+            }
+            class LinearPassageBuilderApi {
+                constructor(args) {
+                    this.args = args;
+                    this.actions = [];
+                }
+                act(f) {
+                    this.actions.push(f);
+                    return this;
+                }
+                waitText(sec, text, center) {
+                    this.actions.push((s, next) => {
+                        _printCenter(s, text, center || false);
+                        _waitWithTime(sec, next);
+                    });
+                    return this;
+                }
+                waitImageText(sec, src, text, center) {
+                    this.actions.push((s, next) => {
+                        s.img(src, center);
+                        s.br();
+                        _printCenter(s, text, center || false);
+                        _waitWithTime(sec, next);
+                    });
+                    return this;
+                }
+                waitTitle(sec, text) {
+                    this.actions.push((s, next) => {
+                        s.printCenter(el.title(text));
+                        _waitWithTime(sec, next);
+                    });
+                    return this;
+                }
+                pass(passage, args) {
+                    this.actions.push((s, next) => {
+                        Passage.goto(passage, args);
+                    });
+                    return this;
+                }
+                waitTyping(sec, text) {
+                    this.actions.push((s, next) => {
+                        s.type(text, 50, undefined, () => {
+                            _waitWithTime(sec, next);
+                        });
+                    });
+                    return this;
+                }
+                mus(min, sec) {
+                    const time = (min * 60) + sec;
+                    return ['mus', time];
+                }
+                _getActions() {
+                    return this.actions;
+                }
+            }
+            internal.LinearPassageBuilderApi = LinearPassageBuilderApi;
+        })(internal = Passage.internal || (Passage.internal = {}));
+        function ofLinear(name, cb) {
+            Passage.of(name, s => {
+                let [pos] = s.args();
+                if (isNull(pos))
+                    pos = 0;
+                if (pos < 0)
+                    pos = 0;
+                const api = new internal.LinearPassageBuilderApi(s.args());
+                cb(api);
+                const actions = api._getActions();
+                if (pos >= actions.length)
+                    pos = actions.length - 1;
+                const action = actions[pos];
+                action(s, () => {
+                    Passage.reload([pos + 1]);
+                });
+            });
+        }
+        Passage.ofLinear = ofLinear;
+    })(Passage || (Passage = {}));
+    var Passage;
+    (function (Passage) {
+        function sequencePassageLogic(name, cb, isBack) {
+            Passage.of(name, s => {
+                const adder = el.seq("_seq:" + name);
+                cb(adder);
+                const seq = adder.done();
+                seq.setup(isBack, ">>>", "<<<");
+                s.print(seq);
+            });
+        }
+        function ofSequence(name, cb) {
+            sequencePassageLogic(name, cb, true);
+        }
+        Passage.ofSequence = ofSequence;
+        function ofSequenceNoBack(name, cb) {
+            sequencePassageLogic(name, cb, false);
+        }
+        Passage.ofSequenceNoBack = ofSequenceNoBack;
+    })(Passage || (Passage = {}));
+    var Util;
+    (function (Util) {
+        function lineInfo(prev = false) {
+            const e = new Error();
+            if (isNull(e.stack)) {
+                throw new Error("Can't determine code hash. No stack information");
+            }
+            const stack = e.stack.replace("\t", "").split("\n");
+            let stackStr = "";
+            if (prev) {
+                stackStr = stack[1];
+            }
+            else {
+                stackStr = stack[2];
+            }
+            let count = 0;
+            let id = -1;
+            for (let i = stackStr.length - 1; i > 0; i--) {
+                const char = stackStr.charAt(i);
+                if (char === ":") {
+                    count += 1;
+                    if (count === 2) {
+                        id = i + 1;
+                        break;
+                    }
+                }
+            }
+            if (id === -1) {
+                throw new Error("Can't find stack information about line and number");
+            }
+            if (stackStr.endsWith(")")) {
+                stackStr = stackStr.substring(0, stackStr.length - 1);
+            }
+            return stackStr.substring(id);
+        }
+        Util.lineInfo = lineInfo;
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        class Pageable {
+            constructor(elements, renderer, page_number = 1, pageSize = 5) {
+                this.elements = elements;
+                this.renderer = renderer;
+                this.page_number = page_number;
+                this.pageSize = pageSize;
+            }
+            page(n) {
+                const page = n - 1;
+                const start = this.pageSize * page;
+                const end = start + this.pageSize;
+                return this.elements.slice(start, end);
+            }
+            maxpage() {
+                return Math.ceil(this.elements.length / this.pageSize);
+            }
+            render(s) {
+                __drawPanel(s, this.page_number, this.maxpage(), n => this.page_number = n);
+                for (let elem of this.page(this.page_number)) {
+                    s.print(this.renderer(elem));
+                    s.print(el.hr());
+                }
+            }
+        }
+        Util.Pageable = Pageable;
+        function __drawPanel(s, page, max, changePage) {
+            const changer = (cap, n) => s.rebutton(cap, () => changePage(n));
+            if (page > 1) {
+                changer("<<<", 1);
+                changer("<", page - 1);
+            }
+            el.print(s, `[ ${page} / ${max} ]`);
+            if (page < max) {
+                changer(">", page + 1);
+                changer(">>>", max);
+            }
+            el.print(s, el.hr());
+        }
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        const MAX_LAST_COMMAND_LEN = 10;
+        class Quest {
+            constructor(quest) {
+                this.quest = quest;
+                this.lastCommands = [];
+                this.lastCommandCursor = 0;
+                this.lastResponses = [];
+                this.maxLines = 15;
+            }
+            render(s) {
+                const responsesSpan = s.print(el.span(s => {
+                    this.lastResponses.forEach(resp => {
+                        s.println(resp);
+                    });
+                }));
+                this.inputElement(s, resp => {
+                    responsesSpan.reload();
+                });
+            }
+            inputElement(s, onQuestResponse) {
+                const input = el.of("input");
+                input.style.width = "65%";
+                const sendCommandFn = () => {
+                    if (input.value.length < 1)
+                        return;
+                    this.sendCommand(input.value, onQuestResponse);
+                    this.appendLastCommand(input.value);
+                    input.value = "";
+                    input.focus();
+                };
+                const getLastCommand = (plus) => {
+                    const s = this.getLastCommandByCursor(plus);
+                    input.value = s;
+                    input.focus();
+                };
+                s.button("⬇️", () => getLastCommand(-1));
+                s.button("⬆️", () => getLastCommand(1));
+                s.print(input);
+                Engine.Timer.single(1, () => input.focus());
+                input.addEventListener("keydown", e => {
+                    if (e.key === "Enter")
+                        sendCommandFn();
+                    else if (e.key === "ArrowUp")
+                        getLastCommand(1);
+                    else if (e.key === "ArrowDown")
+                        getLastCommand(-1);
+                });
+                s.button("✅", sendCommandFn);
+            }
+            async sendCommand(c, onResponse) {
+                this.lastCommandCursor = 0;
+                const arg = parseArgument(c);
+                const response = await this.quest.evaluate(arg);
+                this.appendLastResponse("[ " + c + " ]");
+                this.appendLastResponse(response);
+                onResponse(response);
+            }
+            appendLastCommand(c) {
+                const foundIndex = this.lastCommands.indexOf(c);
+                if (foundIndex !== -1) {
+                    this.lastCommands.splice(foundIndex, 1);
+                    this.lastCommands.push(c);
+                    return;
+                }
+                if (this.lastCommands.length >= MAX_LAST_COMMAND_LEN) {
+                    this.lastCommands.splice(0, 1);
+                }
+                this.lastCommands.push(c);
+            }
+            appendLastResponse(c) {
+                if (this.lastResponses.length >= this.maxLines) {
+                    this.lastResponses.splice(0, 1);
+                }
+                this.lastResponses.push(c);
+            }
+            getLastCommandByCursor(plus) {
+                const index = this.lastCommands.length - 1 - this.lastCommandCursor;
+                const value = this.lastCommands[index];
+                if (isNull(value))
+                    return "";
+                this.lastCommandCursor = (this.lastCommandCursor + plus) % this.lastCommands.length;
+                if (this.lastCommandCursor < 0) {
+                    this.lastCommandCursor = this.lastCommands.length - 1;
+                }
+                return value;
+            }
+        }
+        Util.Quest = Quest;
+        class QuestArgument {
+            constructor(command, args, raw, rawArgs) {
+                this.command = command;
+                this.args = args;
+                this.raw = raw;
+                this.rawArgs = rawArgs;
+            }
+        }
+        Util.QuestArgument = QuestArgument;
+        function parseArgument(str) {
+            let command = "";
+            let args = [];
+            let sb = [];
+            const collectArgs = () => {
+                if (sb.length > 0) {
+                    args.push(sb.join(""));
+                    sb = [];
+                }
+            };
+            let isCommandParsing = true;
+            for (let i = 0; i < str.length; i++) {
+                const ch = str.charAt(i);
+                if (isCommandParsing) {
+                    if (ch === " ") {
+                        command = sb.join("");
+                        sb = [];
+                        isCommandParsing = false;
+                    }
+                    else {
+                        sb.push(ch);
+                    }
+                }
+                else {
+                    if (ch === " ") {
+                        collectArgs();
+                    }
+                    else {
+                        sb.push(ch);
+                    }
+                }
+            }
+            if (isCommandParsing) {
+                command = sb.join("");
+            }
+            else {
+                collectArgs();
+            }
+            let rawArgs = "";
+            if (!isCommandParsing) {
+                const id = str.indexOf(" ");
+                rawArgs = str.substring(id + 1);
+            }
+            return new QuestArgument(command, args, str, rawArgs);
+        }
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        function declick(span) {
+            if (!(span instanceof HTMLElement))
+                return;
+            span.onclick = null;
+            for (let child of Array.from(span.children)) {
+                Util.declick(child);
+            }
+        }
+        Util.declick = declick;
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        function copy(content) {
+            navigator.clipboard.writeText(content);
+        }
+        Util.copy = copy;
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        function hash(s) {
+            let hash = 0;
+            if (s.length == 0)
+                return hash;
+            for (let i = 0; i < s.length; i++) {
+                const char = s.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return hash;
+        }
+        Util.hash = hash;
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        class Lazy {
+            constructor(init) {
+                this.init = init;
+            }
+            get() {
+                if (isNull(this.data))
+                    this.data = this.init();
+                return this.data;
+            }
+        }
+        Util.Lazy = Lazy;
+        class AsyncLazy {
+            constructor(init) {
+                this.init = init;
+            }
+            async get() {
+                if (isNull(this.data))
+                    this.data = await this.init();
+                return this.data;
+            }
+        }
+        Util.AsyncLazy = AsyncLazy;
+        function lazy(t) {
+            return new Lazy(t);
+        }
+        Util.lazy = lazy;
+        lazy.async = (t) => {
+            return new AsyncLazy(t);
+        };
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        function arrayFold(arr, each) {
+            if (arr.length % each !== 0)
+                throw new Error("Array must be a multiple of " + each);
+            const output = [];
+            let elements = [];
+            let count = 0;
+            for (let elem of arr) {
+                elements.push(elem);
+                count += 1;
+                if (count >= each) {
+                    count = 0;
+                    output.push(elements);
+                    elements = [];
+                }
+            }
+            return output;
+        }
+        Util.arrayFold = arrayFold;
+    })(Util || (Util = {}));
+    var Util;
+    (function (Util) {
+        function rand(min, max) {
+            return Math.floor(Util.randf(min, max + 1));
+        }
+        Util.rand = rand;
+        function randf(min, max) {
+            if (max === undefined) {
+                max = min;
+                min = 0;
+            }
+            return (Math.random() * (max - min)) + min;
+        }
+        Util.randf = randf;
+        function chance(n) {
+            return Math.random() <= n;
+        }
+        Util.chance = chance;
+        function randChoose(list) {
+            if (list.length < 1) {
+                return null;
+            }
+            else if (list.length === 1) {
+                return list[0];
+            }
+            const id = Util.rand(0, list.length - 1);
+            return list[id];
+        }
+        Util.randChoose = randChoose;
+    })(Util || (Util = {}));
+    var Engine;
+    (function (Engine) {
+        class VariableInstance {
+            constructor(varName) {
+                this.varName = varName;
+            }
+            set(value) {
+                V[this.varName] = value;
+                return true;
+            }
+            get() {
+                return V[this.varName];
+            }
+            isNull() {
+                return isNull(V[this.varName]);
+            }
+            init(def) {
+                const value = V[this.varName];
+                if (isNull(value)) {
+                    if (def instanceof Function)
+                        def = def();
+                    V[this.varName] = def;
+                    return this;
+                }
+                else {
+                    return this;
+                }
+            }
+        }
+        Engine.VariableInstance = VariableInstance;
+    })(Engine || (Engine = {}));
+    var Engine;
+    (function (Engine) {
+        function loadFileDecode(enc_str) {
+            if (!Engine.Binary) {
+                return enc_str;
+            }
+            return Engine.Binary.decode(enc_str);
+        }
+        function saveFileEncode(str) {
+            if (!Engine.Binary) {
+                return str;
+            }
+            return Engine.Binary.encode(str);
+        }
+        function toAnchorValue(value) {
+            if (isNull(value))
+                return null;
+            const tp = typeof (value);
+            if (tp === "string") {
+                return "S" + value.replace("&", "_");
+            }
+            else if (tp === "number") {
+                return "N" + value;
+            }
+            else if (tp == "boolean") {
+                if (value === true) {
+                    return "T";
+                }
+                else {
+                    return "F";
+                }
+            }
+            else {
+                throw new Error("Invalid variable type for anchor");
+            }
+        }
+        function fromAnchorValue(value) {
+            if (value.startsWith("N")) {
+                return parseFloat(value.substring(1));
+            }
+            else if (value.startsWith("S")) {
+                return value.substring(1);
+            }
+            else if (value === "T") {
+                return true;
+            }
+            else if (value === "F") {
+                return false;
+            }
+            else {
+                return null;
+            }
+        }
+        class Variables {
+            static save() {
+                let lastVarName = "";
+                try {
+                    const anchorVariables = Engine.Config.anchorVariables;
+                    const isAnchorEnabled = anchorVariables.length > 0;
+                    const anchorValues = {};
+                    sessionStorage.clear();
+                    for (let key of Object.keys(V)) {
+                        if (anchorVariables.indexOf(key) !== -1)
+                            continue;
+                        const value = V[key];
+                        lastVarName = key;
+                        sessionStorage.setItem(key, Engine.pack(value));
+                    }
+                    if (isAnchorEnabled) {
+                        const anchorKeys = Object.keys(V)
+                            .filter(k => anchorVariables.indexOf(k) !== -1);
+                        for (let key of anchorKeys) {
+                            const anchorValue = toAnchorValue(V[key]);
+                            if (isNull(anchorValue))
+                                continue;
+                            anchorValues[key] = anchorValue;
+                        }
+                        Engine.setAnchor(anchorValues);
+                    }
+                }
+                catch (e) {
+                    console.error("Unable to save variables [" + lastVarName + "]", e);
+                }
+            }
+            static load() {
+                try {
+                    const anchorVariables = Engine.Config.anchorVariables;
+                    const isAnchorEnabled = anchorVariables.length > 0;
+                    const anchorValues = Engine.anchor();
+                    this.reset();
+                    for (let key of Object.keys(sessionStorage)) {
+                        V[key] = Engine.unpack(sessionStorage.getItem(key));
+                    }
+                    if (isAnchorEnabled) {
+                        const keys = Object
+                            .keys(anchorValues)
+                            .filter(a => anchorVariables.indexOf(a) !== -1);
+                        for (let key of keys) {
+                            V[key] = fromAnchorValue(anchorValues[key]);
+                        }
+                    }
+                }
+                catch (e) {
+                    console.error("Unable to load variables from Session Storage", e);
+                }
+            }
+            static clean() {
+                Object.keys(V).forEach(k => {
+                    if (k.startsWith("_")) {
+                        delete V[k];
+                    }
+                });
+            }
+            static reset() {
+                Object.keys(V).forEach(k => {
+                    delete V[k];
+                });
+            }
+            static saveFile() {
+                const json_string = Engine.pack(V);
+                const encodedFileContent = saveFileEncode(json_string);
+                var blob = new Blob([encodedFileContent], { type: "text/sav" });
+                var url = URL.createObjectURL(blob);
+                var link = document.createElement("a");
+                link.href = url;
+                link.download = Passage.current() + ".sav";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+            static loadFile() {
+                var input = document.createElement("input");
+                input.type = "file";
+                input.onchange = function (event) {
+                    const file = event.target.files[0];
+                    var reader = new FileReader();
+                    reader.onload = function (event) {
+                        const fileDecodedContent = loadFileDecode(event.target.result);
+                        const js = Engine.unpack(fileDecodedContent);
+                        Engine.Variables.reset();
+                        Object.keys(js).forEach(k => {
+                            const value = js[k];
+                            V[k] = value;
+                        });
+                        Engine.Variables.save();
+                        location.reload();
+                    };
+                    reader.onerror = function () {
+                        throw new Error("Error reading file");
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            }
+            static saveWithTimer() {
+                if (this._timer)
+                    this._timer.stop();
+                this._timer = new Engine.Timer(setInterval(() => {
+                    if (Engine.Config.autoSaveTimer) {
+                        this.save();
+                    }
+                }, 5000), true);
+            }
+        }
+        Engine.Variables = Variables;
+    })(Engine || (Engine = {}));
+    var StoryConfig;
+    (function (StoryConfig) {
+        Engine.Config.autoSaveOnGoto = true;
+        Engine.Config.autoSaveTimer = true;
+        Engine.Config.anchorVariables = ['page', 'storyName'];
+        Engine.Config.passageInUrlAnchor = true;
+    })(StoryConfig || (StoryConfig = {}));
+    var DTO;
+    (function (DTO) {
+        Engine.Config.dto.namespace = DTO;
+        Engine.Config.dto.path = "DTO";
+    })(DTO || (DTO = {}));
+    var hax;
+    (function (hax) {
+        const MAIN_PASSAGES = [
+            ["Start", "Main Page"],
+            ["Engine", "Download"],
+            ["Stories", "Stories"],
+        ];
+        function printMainPassages(s) {
+            for (let [name, caption] of MAIN_PASSAGES) {
+                if (Passage.current() === name) {
+                    s.button(caption, () => { }).CLASS("choosenTitle");
+                }
+                else {
+                    s.button(caption, () => { Passage.goto(name); }).CLASS("unchoosenTitle");
+                }
+            }
+            s.hr();
+        }
+        function passage(name, title, bg, f) {
+            Passage.of(name, s => {
+                Engine.Bg.set(bg);
+                Engine.Pos.center();
+                s.title(title);
+                printMainPassages(s);
+                s.hr();
+                f(s);
+            });
+        }
+        hax.passage = passage;
+        function linkPassage(name, title, bg, links) {
+            hax.passage(name, title, bg, s => {
+                const p = new hax.PrettyLinkPrinter();
+                for (let [name, lnk] of links) {
+                    p.linkln(s, name, lnk);
+                }
+            });
+        }
+        hax.linkPassage = linkPassage;
+    })(hax || (hax = {}));
+    var hax;
+    (function (hax) {
+        const EMOJIS = [
+            "📔", "📕", "📖", "📗", "📘", "📚", "📑", "🧾", "📙"
+        ];
+        class PrettyLinkPrinter {
+            constructor() {
+                this.cnt = 0;
+            }
+            takeEmoji() {
+                const e = EMOJIS[this.cnt];
+                this.cnt = (this.cnt + 1) % EMOJIS.length;
+                return e;
+            }
+            passln(s, name, passage) {
+                s.passln(this.takeEmoji() + " " + name, passage, []);
+            }
+            storyln(s, name) {
+                s.passln(this.takeEmoji() + " " + name, "StoryRead", [], () => {
+                    V["storyName"] = name;
+                    V["page"] = 0;
+                    console.log(V["storyName"]);
+                });
+            }
+            linkln(s, name, url) {
+                const l = s.linkln(this.takeEmoji() + " " + name, () => { });
+                l.href = url;
+            }
+        }
+        hax.PrettyLinkPrinter = PrettyLinkPrinter;
+    })(hax || (hax = {}));
+    hax.linkPassage("Engine", "Download Monna Histea Engine", "fireflies.jpg", [
+        ["Monna Histea 2.6.2", "https://ouo.io/ZBkkfD"]
+    ]);
+    hax.passage("Start", "Monna Histea", "islands.jpg", s => {
+        const p = new hax.PrettyLinkPrinter();
+        p.passln(s, "Download Monna Histea Engine", "Engine");
+    });
+    hax.passage("Stories", "Monna Histea - Stories", "stories.jpg", s => {
+        const stories = Game.text.list().filter(name => name.startsWith("Story_"));
+        const p = new hax.PrettyLinkPrinter();
+        for (let story of stories) {
+            p.storyln(s, story);
+        }
+    });
+    hax.passage("StoryRead", "Read Story", "stories.jpg", s => {
+        const name = V['storyName'];
+        const story = Game.text.get(name);
+        if (story.length === 0) {
+            s.println("No story \"" + name + "\" is found 🥲");
+            s.passln("Oh ok😅", "Stories", []);
+            return;
+        }
+        const page = Game.v('page').init(0).get();
+        s.println(name);
+        s.hr();
+        const text = story[page];
+        if (isNull(text)) {
+            s.title("🔮Void...🔮");
+        }
+        else {
+            s.println(text);
+        }
+        function setPage(p) {
+            V.page = p;
+            if (V.page < 0)
+                V.page = 0;
+            if (V.page >= story.length)
+                V.page = story.length - 1;
+        }
+        s.rebutton("<<", () => setPage(V.page - 1));
+        s.print(page);
+        s.rebutton(">>", () => setPage(V.page + 1));
+    });
+    
+    
+    Game.text.add("Story_Test01", "Це проста тестова історія");
+    Game.text.add("Story_Test01", "Завдякі ній можна писати звичайний текст");
+    Game.text.add("Story_Test01", "І тут все дуже просто.");
+    Game.text.add("Story_Test01", "Я просто створюю простий текст, що починається на Story_");
+    Game.text.add("Story_Test01", "І вже далі можу щось писати, і воно буде ділитись більш-менш");
+    
+    
+})();
