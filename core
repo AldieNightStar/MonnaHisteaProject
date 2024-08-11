@@ -10,7 +10,7 @@
     (function (Engine) {
     })(Engine || (Engine = {}));
     window.addEventListener("load", async function () {
-        Game.dto(Engine.Config.dto.namespace, Engine.Config.dto.path);
+        Game.dto(Engine.Config.dto.namespace, "");
         if (Engine.Config.passageInUrlAnchor) {
             Engine.Config.anchorVariables.push("passage");
         }
@@ -180,8 +180,7 @@
             Config.autoSaveOnGoto = false;
             Config.autoSaveTimer = false;
             Config.dto = {
-                namespace: null,
-                path: "",
+                namespace: null
             };
             Config.passageInUrlAnchor = false;
             Config.anchorVariables = [];
@@ -1131,8 +1130,6 @@
             static stopMusic() {
                 this.music.src = "";
                 this.music.volume = 0;
-                this.paused = true;
-                this.currentTime = 0;
                 let dat = this.data();
                 dat.music.src = "";
                 dat.music.volume = 0;
@@ -1140,18 +1137,28 @@
                 dat.music.playing = false;
             }
             static async playMusic(src, vol, time) {
-                await this.closeMusic();
-                this.music = await Engine.Loader.audio(src);
-                this.music.loop = true;
-                this.music.volume = vol;
-                if (time !== undefined) {
-                    this.music.currentTime = time;
-                }
                 const dat = this.data();
+                const sameMusicPlaying = dat.music.src === src && this.music && !this.music.paused;
+                if (!sameMusicPlaying)
+                    await this.closeMusic();
                 dat.music.src = src;
-                dat.music.volume = vol;
-                dat.music.time = this.music.currentTime;
                 dat.music.playing = true;
+                if (!isNull(vol)) {
+                    dat.music.volume = vol;
+                }
+                if (!sameMusicPlaying)
+                    this.music = await Engine.Loader.audio(src);
+                this.music.loop = true;
+                this.music.volume = dat.music.volume;
+                if (!isNull(time)) {
+                    this.music.currentTime = time;
+                    dat.music.time = time;
+                }
+                else {
+                    dat.music.time = 0;
+                }
+                if (sameMusicPlaying)
+                    return;
                 this.music.play().catch(async (e) => {
                     if (e instanceof DOMException) {
                         if (e.message.indexOf("no supported source") !== -1) {
@@ -1250,8 +1257,6 @@
             }
         }
         _Audio.music = new window.Audio();
-        _Audio.paused = true;
-        _Audio.currentTime = 0;
         _Audio.timer = 0;
         Engine.Audio = _Audio;
     })(Engine || (Engine = {}));
@@ -1677,10 +1682,11 @@
     })(Engine || (Engine = {}));
     var Engine;
     (function (Engine) {
-        const NAME_KEY = "_&#";
+        const NAME_KEY = "?#";
         function getClassByName(path) {
             try {
-                return path.split('.').reduce((prev, next) => prev[next], Game);
+                return path.split('.')
+                    .reduce((prev, next) => prev[next], Engine.Config.dto.namespace);
             }
             catch (e) {
                 return null;
@@ -1753,32 +1759,26 @@
     })(Engine || (Engine = {}));
     var Game;
     (function (Game) {
+        function pathRelative(path, subpath) {
+            if (isNull(path) || path === "") {
+                return subpath;
+            }
+            return path + "." + subpath;
+        }
         function dto(obj, path) {
             if (isNull(obj))
                 return;
-            for (let k of Object.keys(obj)) {
-                const subObject = obj[k];
+            for (let name of Object.keys(obj)) {
+                const subObject = obj[name];
                 const typ = typeof (subObject);
                 if (typ === "object") {
-                    Game.dto(subObject, path + "." + k);
+                    Game.dto(subObject, pathRelative(path, name));
                 }
                 else if (typ === "function") {
                     if (subObject.constructor && isNull(subObject._path)) {
-                        subObject._path = path + "." + subObject.name;
+                        subObject._path = pathRelative(path, subObject.name);
                     }
                 }
-            }
-            if (path.indexOf(".") === -1) {
-                if (path.length < 1) {
-                    throw new Error("Game.dto: Name should not be empty");
-                }
-                if (path[0] !== path[0].toUpperCase()) {
-                    throw new Error("Game.dto: Name should start with upper case letter");
-                }
-                if (Game[path]) {
-                    throw new Error("Game.dto: Can't define new " + path + " namespace as it already exist");
-                }
-                Game[path] = obj;
             }
         }
         Game.dto = dto;
@@ -1997,19 +1997,6 @@
             }
             goto(args) {
                 return Passage.goto(this._name, args);
-            }
-            wrap(newFunc) {
-                const oldFunc = passages[this._name];
-                if (isNull(oldFunc)) {
-                    throw new Error("Nothing to wrap for Passages: " + this._name);
-                }
-                passages[this._name] = s => {
-                    newFunc(s, () => oldFunc(s));
-                };
-                return this;
-            }
-            wrapper() {
-                return new Passage.PassageWrapperBuilder(this);
             }
         }
         Passage.CreatedPassageRef = CreatedPassageRef;
@@ -2313,37 +2300,6 @@
             return sequencePassageLogic(name, cb, false);
         }
         Passage.ofSequenceNoBack = ofSequenceNoBack;
-    })(Passage || (Passage = {}));
-    var Passage;
-    (function (Passage) {
-        class PassageWrapperBuilder {
-            constructor(ref) {
-                this.ref = ref;
-                this.befores = [];
-                this.afters = [];
-            }
-            before(f) {
-                this.befores.push(f);
-                return this;
-            }
-            after(f) {
-                this.afters.push(f);
-                return this;
-            }
-            done() {
-                this.ref.wrap(async (s, old) => {
-                    for (let f of this.befores) {
-                        await f(s);
-                    }
-                    await old();
-                    for (let f of this.afters) {
-                        await f(s);
-                    }
-                });
-                return this.ref;
-            }
-        }
-        Passage.PassageWrapperBuilder = PassageWrapperBuilder;
     })(Passage || (Passage = {}));
     var Util;
     (function (Util) {
@@ -2893,7 +2849,6 @@
     var DTO;
     (function (DTO) {
         Engine.Config.dto.namespace = DTO;
-        Engine.Config.dto.path = "DTO";
     })(DTO || (DTO = {}));
     var hax;
     (function (hax) {
@@ -2966,7 +2921,7 @@
         hax.PrettyLinkPrinter = PrettyLinkPrinter;
     })(hax || (hax = {}));
     hax.linkPassage("Engine", "Download Monna Histea Engine", "fireflies.jpg", [
-        ["Monna Histea 2.7.0", "https://ouo.io/ChcQ7Z"]
+        ["Monna Histea 2.8.0", "https://ouo.io/NBC1UvR"]
     ]);
     hax.passage("Start", "Monna Histea", "islands.jpg", s => {
         const p = new hax.PrettyLinkPrinter();
