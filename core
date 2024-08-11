@@ -2921,7 +2921,7 @@
         hax.PrettyLinkPrinter = PrettyLinkPrinter;
     })(hax || (hax = {}));
     hax.linkPassage("Engine", "Download Monna Histea Engine", "fireflies.jpg", [
-        ["Monna Histea 2.8.0", "https://ouo.io/NBC1UvR"]
+        ["Monna Histea 2.8.1", "https://ouo.io/agOmxwG"]
     ]);
     hax.passage("Start", "Monna Histea", "islands.jpg", s => {
         const p = new hax.PrettyLinkPrinter();
