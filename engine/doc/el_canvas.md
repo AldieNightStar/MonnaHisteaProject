@@ -24,6 +24,10 @@ el.canvas(w, h, async api => {
     // Returns canvas local x, y coordinates
     const [x, y] = await api.waitClick();
 
+
+	// Handle clicks in callback maner
+	api.handleClicks((x, y) => {})
+
 	// Get width and height of the canvas
 	const [w, h] = api.size();
 
@@ -132,7 +136,26 @@ t.color("red");
 // Size of font is equal to height of a single tile
 t.font(name);
 
+
+// Clear original canvas
+t.clear()
+
+
+// Get width and height of the canvas in tiles
+const [w, h] = api.size();
+
+
 // Waits for click on tile
 // Returns x, y tile coordinates
 const [x, y] = await t.waitClick();
+
+// Handle clicks in callback maner
+t.handleClicks((x, y) => {})
+
+// Automatic updates in timer
+// Runs each 15 ms and clears the canvas before it
+// Stops when passage changes or canvas gets deleted
+api.drawing(() => {
+	// Logic goes here
+});
 ```

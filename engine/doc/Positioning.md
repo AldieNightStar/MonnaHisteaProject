@@ -7,11 +7,14 @@
 ## Usage
 ```js
 // Set passage content at top
-Engine.Pos.top();
+// centered - (Optional Boolean) Tells that element will be centered (Default: false)
+Engine.pos.top(centered);
 
 // Set passage content at center
-Engine.Pos.center();
+// centered - (Optional Boolean) Tells that element will be centered (Default: true)
+Engine.pos.center(centered);
 
 // Set passage content at bottom
-Engine.Pos.bottom();
+// centered - (Optional Boolean) Tells that element will be centered (Default: true)
+Engine.pos.bottom(centered);
 ```

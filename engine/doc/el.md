@@ -13,10 +13,15 @@ const element = el.of("div", d => {
 });
 
 // Print into another element
-// dest - Destination DOM element or el.IAppendable
+// dest - Destination DOM element or el.Appendable
 // Returns element it prints
 el.print(dest, element);
 el.println(dest, element);
+
+// Print all the elements from the arguments
+// For example: el.printAll(s, image, "Hello, there", element3)
+// Every element is printed in a new line, to print inline, wrap them into []
+el.printAll(dest, ...elements);
 
 // Clear everything inside DOM element
 el.clear(element);
@@ -36,16 +41,4 @@ await el.reload(target);
 // target - DOM element that need to reload
 // ms     - (Optional) Milliseconds to reload (By default: 600)
 await el.reloadFade(target, ms);
-```
-
-
-## Adding `className` and `id`
-* `el` returns new element with two additional methods `CLASS` and `ID` to set up `id` without creating callbacks
-* `ID` and `CLASS` returns DOM Element itself.
-```js
-el.of("div", cb).ID("div1").CLASS("special_div");
-
-el.span(s => s.print("There was a story...")).CLASS("title");
-
-el.button("Push me", cb).ID("button1").CLASS("hellButton");
 ```

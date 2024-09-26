@@ -47,6 +47,30 @@ el.link(caption, onclick, cb);
 el.relink(reloadable, caption, onclick, cb);
 
 
+// Creates <a> link. Will change the current Passage
+//
+// reloadable - Element that will be reloaded on click
+// caption    - innerText property to set up
+// args       - arguments to pass into Passage.args()
+// onclick    - action on click event
+// cb         - (Optional) Callback to customize
+//
+// Returns new element
+el.passlink(reloadable, caption, args, onclick, cb);
+
+
+// Creates <a> link. Will change the current Passage and also clean _temp variables
+//
+// reloadable - Element that will be reloaded on click
+// caption    - innerText property to set up
+// args       - arguments to pass into Passage.args()
+// onclick    - action on click event
+// cb         - (Optional) Callback to customize
+//
+// Returns new element
+el.passCleanLink(reloadable, caption, args, onclick, cb);
+
+
 // Creates <img> image
 //
 // src - src property to set up

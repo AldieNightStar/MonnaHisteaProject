@@ -26,6 +26,5 @@ Util.chance(number)
 // list - List of any elements
 //
 // Returns random element from list
-// Returns null if list is empty
 Util.randChoose(list)
 ```

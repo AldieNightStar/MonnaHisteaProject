@@ -2,45 +2,31 @@
 
 
 ## Notes
-* `DTO` classes are easier to store than the raw __json__
-* To create a `DTO` class then define it inside a namespace `DTO`
+* `DTO` classes are easier to store than raw __json__
+* To create a `DTO` class, just add there `@Engine.dto(name)` annotation and specify uniq name
 
 ## `DTO` Sample
 * Create a file, for example `Player.ts`
+* ⚠️ Each `@Engine.dto` name should be unique
 ```ts
-namespace DTO {
-	
-	// This class would be a DTO class
-	// Because it is inside of DTO namespace
-	export class Player {
-		constructor(public hp: number, public coins: number) {}
-	}
-
+@Engine.dto("Player")
+export class Player {
+	constructor(public hp: number, public coins: number) {}
 }
+
+// Test that Player is marked with @Engine.dto
+Engine.isDto(new Player()); // true
+Engine.isDto(Player);       // true
+Engine.isDto(anotherValue); // false
 ```
-
-## Configure `DTO`
-* When you create a new project, Engine generates `DTO.ts` that configures `DTO` namespace
-* ⚠️ __You don't need__ to change something, unless you know what you are doing
-* It has these lines of code:
-```ts
-Engine.Config.dto.namespace = DTO;
-Engine.Config.dto.path = "DTO";
-```
-
-## Under the hood?
-* Under the hood it uses `Game.dto`.
-* It reads `Engine.Config.dto` configuration and init `DTO` namespace for you
-* All that goes before the novel is starting
-
 
 ## Storing to `V`
 ```js
 // Store
-V.user = new DTO.User("HaxiDenti", 20, 1000);
+V.user = new User(20, 1000);
 
 // Load
-const user: DTO.User = V.user;
+const user: User = V.user;
 ```
 
 

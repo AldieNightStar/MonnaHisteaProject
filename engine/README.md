@@ -3,7 +3,7 @@
 
 ## Notes
 * `Monna Histea Engine 2` Made as better and simpler version than `Monna Histea Engine` with several improvements and increasing simplicity
-* It's an Engine for creating Interactive Fiction stories with dead-simple JavaScript functions and classes
+* It's an Engine for creating Interactive Fiction stories with dead-simple TypeScript functions and classes
 
 ## Project structure
 * `src` - Folder where all your Game `API`. For example game logic or `DTO`'s
@@ -34,15 +34,21 @@ npm install -g typescript
 
 ## Reference
 
-* Text story
-	* [Text story](doc/TextStory.md)
 * Passages
     * [Passage API](doc/Passage.md)
     * [Passage Span API](doc/PassageSpan.md)
+	* [Passage and Closeables](doc/PassageCloseables.md)
+	* [Passage interface](doc/PassageClass.md)
+* Text Support
+	* [Text Passage](doc/TextPassage.md)
+	* [Text Builtin Processors](doc/TextPassageProcessors.md)
+	* [Text Create Processors](doc/TextPassageCreateProcessors.md)
+	* [Text Files API](doc/TextStory.md)
 * Game API
     * [`Game` API](doc/GameAPI.md)
     * [`Game.v` Variable creator](doc/Game_v.md)
 	* [`Configuration` API](doc/Config.md)
+	* [Check is debug mode activated](doc/EngineIsDebugMode.md)
 * Variables
     * [Variables API](doc/Variables.md)
     * [Temporary `_variables` & Clean API](doc/VariablesClean.md)
@@ -51,19 +57,19 @@ npm install -g typescript
     * [`isNull` Checks](doc/IsNull.md)
     * [`bind` Function Binding](doc/bind.md)
     * [Save/Load Variables into File](doc/SaveLoad.md)
+	* [Store variables in `URL` #anchor](doc/Anchor.md)
+	* [Reset everything](doc/Reset.md)
 * Audio
     * [Play Music](doc/Music.md)
     * [Play Sound](doc/Sound.md)
 * Elements
+	* [Custom element Classes](doc/element_classes.md)
     * [`el` API - Printing and DOM manipulation](doc/el.md)
     * [`el.span` Span API](doc/el_span.md)
     * [`el.***` Reusable Elements](doc/el_reusable_elements.md)
     * [`el.canvas` Canvas Element](doc/el_canvas.md)
     * [`el.select` Selector API](doc/el_select.md)
-    * [`el.Sequence` API](doc/el_seq.md)
 	* [`el.table` Table API](doc/Table.md)
-    * [`render` method](doc/class_render.md)
-	* [`reload` magic method](doc/class_reload.md)
 * Util Functionality
     * [Util Random API](doc/Util_random.md)
     * [Util Span click disabler](doc/Util_declick.md)
@@ -71,7 +77,10 @@ npm install -g typescript
     * [Util Pageable element](doc/Util_Pageable.md)
 	* [Util String hash](doc/Util_hash.md)
 	* [Util Clipboard](doc/Util_clipboard.md)
-	* [Util Quests](doc/Quest.md)
+	* [Util Parse Line](doc/Util_parseLine.md)
+	* [FullScreen Canvas](doc/CanvasFullScreen.md)
+* Signals
+	* [Signals and Usage](doc/Signals.md)
 * Effects
     * [Effects API](doc/Effects.md)
     * [Passage Positioning](doc/Positioning.md)
@@ -87,3 +96,18 @@ npm install -g typescript
 	* [Create Custom Generator](doc/CodeGen_CustomGen.md)
 * Internal `+Generators`
 	* [Builder Generator `+builder`](doc/CodeGen_Builder.md)
+* Networking
+	* [HttpClient Functionality](doc/Net_HttpClient.md)
+	* [HttpClient Broadcast Messages](doc/Net_HttpClientBroadcast.md)
+	* [Backend Kotlin Server](doc/Net_KotlinServer.md)
+
+## Modules
+* [What is that?](doc/Modules_what.md)
+* [How to import?](doc/Modules_import.md)
+* [How to export?](doc/Modules_export.md)
+
+## Release
+```bash
+monnahistea release
+```
+

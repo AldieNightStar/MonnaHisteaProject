@@ -11,21 +11,24 @@
 // This way we create the Span
 el.span(s => {
 
-    // Print element (text, number, HTMLElement, el.IRenderable)
+    // Print element (text, number, HTMLElement, el.Element)
     s.print(element);
     s.println(element);
     s.printCenter(element);
-    s.printCenterln(element);
 
     // Print formatted text and next line after it
     // 
-    // $(name)   - Prints values from `V` variable. Supports el.IRenderable also
-	// $(0) $(1) - Prints values from additional arguments
+    // $(name)   - Prints values from `V` variable. Supports el.Element also
+    // $(0) $(1) - Prints values from additional arguments
     // __word__  - Makes text bold
     // //word//  - Makes text italic
-	//
-	// ...args   - (Optional) Additional arguments. Could be el.IRenderable
+    //
+    // ...args   - (Optional) Additional arguments. Could be el.Element
     s.printf("Hello $(name). It's a __great__ day to //live//", ...args);
+
+    // Print all elements. Returns nothing
+	// Every element is printed in a new line, to print inline, wrap them into []
+    s.printAll(...elements);
 
     // Print button element
     s.button("Caption", callback);
@@ -108,14 +111,14 @@ el.span(s => {
     // Wait some time. (Uses: Engine.Timer.wait(ms))
     await s.wait(ms)
 
-	// Fade out (Removes all clicks)
-	await s.fadeOut();
+    // Fade out (Removes all clicks)
+    await s.fadeOut();
 
-	// Fade in
-	await s.fadeIn();
+    // Fade in
+    await s.fadeIn();
 
-	// Calls fade out, then callback and then fade in
-	await s.fadeChange(callback);
+    // Calls fade out, then callback and then fade in
+    await s.fadeChange(callback);
 
 });
 ```

@@ -8,3 +8,4 @@
 
 ## Supported versions
 [Monna Histea 2.6.2](https://ouo.io/ZBkkfD)
+[Monna Histea 2.9.0alpha1](https://ouo.io/hu9eFa)

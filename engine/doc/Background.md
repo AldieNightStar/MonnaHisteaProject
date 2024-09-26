@@ -7,7 +7,7 @@
 # Usage
 ```js
 // Set new background image
-Engine.Bg.set(src);
+Engine.bg.set(src);
 
 // Remove background image
 Engine.Bg.remove();
